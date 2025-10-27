@@ -1,20 +1,38 @@
 services:
-
   waha:
     image: devlikeapro/waha:latest
-    container_name: wpp_bot_waha
+    container_name: wpp_bot_waha # Renomeado para clareza
     restart: always
-
     ports:
       - '3000:3000'
+    environment:
+      WHATSAPP_START_SESSION: 'default' # Exemplo para iniciar sessão
+      # WAHA_API_KEY: 'sua-chave-aqui' # Adicione se o WAHA precisar
+      # 👇 Adicione esta linha para forçar HTTP para o webhook 👇
+      WAHA_WEBHOOK_URL: 'http://api:5000/chatbot/webhook/'
+    volumes:
+      - waha_data:/app/sessions # Persistir sessão
 
-  api:
+  api: # Mantendo o nome 'api' do seu original
     build:
       context: .
       dockerfile: Dockerfile.api
-    container_name: wpp_bot_api
+    container_name: wpp_bot_api # Mantendo o nome original
     ports:
-      - '5000:5000'
+      - '5000:5000' # Porta Externa:Interna
     volumes:
-      - .:/app
-      - ./chroma_data:/app/chroma_data
+      - .:/app # Monta todo o código em /app para hot-reload
+      # - ./chroma_data:/app/chroma_data # Descomente se/quando usar ChromaDB
+    depends_on:
+      - waha
+    restart: always
+    environment:
+      FLASK_APP: app.py # Garante que o Flask saiba qual arquivo rodar
+      FLASK_DEBUG: "True" # Habilita o modo debug e reloader
+      WAHA_API_URL: "http://waha:3000" # URL para o app.py se conectar ao WAHA
+      # PYTHONUNBUFFERED: 1 # Útil para ver logs Python imediatamente
+    # O comando 'flask run' vai usar FLASK_APP e FLASK_DEBUG do environment
+    command: ["flask", "run", "--host=0.0.0.0", "--port=5000"]
+
+volumes:
+  waha_data: # Define o volume para o WAHA
