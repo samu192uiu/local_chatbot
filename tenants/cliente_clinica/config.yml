@@ -1,0 +1,12 @@
+﻿# tenants/cliente_clinica/config.yml
+name: "Clínica Fisio X"
+timezone: "America/Sao_Paulo"
+price: 100.00
+pix_key: "clinica@example.com"
+agenda_backend: "excel"                  # excel | sqlite (futuro)
+agenda_file: "data/cliente_clinica/agendamentos.xlsx"
+accept_payment_methods:
+  - PIX
+  - CARTAO
+messages:
+  currency: "BRL"

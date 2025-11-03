@@ -1,0 +1,19 @@
+﻿# deploy/docker-compose.sample.yml
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    env_file:
+      - deploy/.env.dev
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./src:/app/src
+      - ./tenants:/app/tenants
+      - ./data:/app/data
+    command: gunicorn -k gthread -w 2 -b 0.0.0.0:5000 "zapwaha.app:app"
+  waha:
+    image: devlikeapro/waha:latest
+    ports:
+      - "3000:3000"

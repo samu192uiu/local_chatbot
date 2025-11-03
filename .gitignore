@@ -1,0 +1,13 @@
+﻿__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.DS_Store
+.idea/
+.vscode/
+.env
+*.log
+ARVORE_ZAPWAHA.txt
+data/

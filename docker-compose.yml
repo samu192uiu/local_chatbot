@@ -1,38 +1,51 @@
 services:
   waha:
     image: devlikeapro/waha:latest
-    container_name: wpp_bot_waha # Renomeado para clareza
+    container_name: wpp_bot_waha
     restart: always
     ports:
-      - '3000:3000'
+      - "3000:3000"
     environment:
-      WHATSAPP_START_SESSION: 'default' # Exemplo para iniciar sessão
-      # WAHA_API_KEY: 'sua-chave-aqui' # Adicione se o WAHA precisar
-      # 👇 Adicione esta linha para forçar HTTP para o webhook 👇
-      WAHA_WEBHOOK_URL: 'http://api:5000/chatbot/webhook/'
+      WHATSAPP_START_SESSION: "default"
+      WAHA_WEBHOOK_URL: "http://api:5000/chatbot/webhook/"
+      # ====== credenciais DEV ======
+      WAHA_API_KEY: "waha_dev_key_123"
+      WAHA_DASHBOARD_PASSWORD: "wahaDashboard!123"
+      WHATSAPP_SWAGGER_PASSWORD: "wahaDocs!123"
     volumes:
-      - waha_data:/app/sessions # Persistir sessão
+      - waha_data:/app/sessions                         # persiste sessão do WhatsApp
 
-  api: # Mantendo o nome 'api' do seu original
+  api:
     build:
       context: .
       dockerfile: Dockerfile.api
-    container_name: wpp_bot_api # Mantendo o nome original
+    container_name: wpp_bot_api
     ports:
-      - '5000:5000' # Porta Externa:Interna
+      - "5000:5000"
     volumes:
-      - .:/app # Monta todo o código em /app para hot-reload
-      # - ./chroma_data:/app/chroma_data # Descomente se/quando usar ChromaDB
+      - .:/app                  # código (hot-reload)
+      - agdata:/app/data        # DADOS (a planilha vai aqui)
+      # Se quiser gerenciar admins por arquivo, descomente a linha abaixo e crie ./config/admins.json
+      # - ./config:/app/config   # opcional: admins.json => {"admins":["5511912345678@c.us"]}
     depends_on:
       - waha
     restart: always
     environment:
-      FLASK_APP: app.py # Garante que o Flask saiba qual arquivo rodar
-      FLASK_DEBUG: "True" # Habilita o modo debug e reloader
-      WAHA_API_URL: "http://waha:3000" # URL para o app.py se conectar ao WAHA
-      # PYTHONUNBUFFERED: 1 # Útil para ver logs Python imediatamente
-    # O comando 'flask run' vai usar FLASK_APP e FLASK_DEBUG do environment
+      FLASK_APP: app.py
+      FLASK_DEBUG: "True"
+      WAHA_API_URL: "http://waha:3000"
+      WAHA_SESSION: "default"
+      AGENDAMENTOS_XLSX: "/app/data/agendamentos.xlsx"
+      # ====== MESMA API KEY do serviço 'waha' ======
+      WAHA_API_KEY: "waha_dev_key_123"
+
+      # IDs de administrador (compatibilidade com diferentes variáveis do código)
+      ADMIN_JID: "5511917281651@c.us"
+      ADMIN_CHAT_ID: "5511917281651@c.us"
+      ADMIN_CHAT_IDS: "5511917281651@c.us"
+
     command: ["flask", "run", "--host=0.0.0.0", "--port=5000"]
 
 volumes:
-  waha_data: # Define o volume para o WAHA
+  waha_data:
+  agdata:

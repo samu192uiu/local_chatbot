@@ -1,0 +1,4 @@
+﻿Valor: R$ {{preco}}.
+Forma de pagamento: {{metodo}}.
+PIX: {{pix_key}} (simulado)
+Após pagar, responda: paguei

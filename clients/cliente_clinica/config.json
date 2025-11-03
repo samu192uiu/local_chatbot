@@ -1,0 +1,7 @@
+﻿{
+  "nome": "Clínica Fisio X",
+  "preco": 100.0,
+  "pix_key": "clinica@example.com",
+  "timezone": "America/Sao_Paulo",
+  "agenda_arquivo": "data/cliente_clinica/agendamentos.xlsx"
+}

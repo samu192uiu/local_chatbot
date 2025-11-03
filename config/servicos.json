@@ -1,0 +1,10 @@
+{
+"moeda": "BRL",
+"servicos": [
+    { "id": "osteopatia",   "nome": "Osteopatia",   "preco": 300.0, "unidade": "sessão", "agendavel": true },
+    { "id": "fisioterapia", "nome": "Fisioterapia", "preco": 200.0, "unidade": "sessão", "agendavel": true },
+    { "id": "acupuntura",   "nome": "Acupuntura",   "preco": 250.0, "unidade": "sessão", "agendavel": true },
+    { "id": "pilates",      "nome": "Pilates",      "preco": null,  "unidade": "aula",   "agendavel": true,
+    "observacao": "Preço definido na clínica ou por plano" }
+]
+}

@@ -1,116 +1,135 @@
-# excel_service.py
-import openpyxl
-from openpyxl.utils import get_column_letter
-import logging
-from datetime import datetime
-
-from services import excel_service # Importa o arquivo excel_service.py de DENTRO da pasta services
+# services/excel_services.py
+from __future__ import annotations
 import os
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
+from openpyxl import Workbook, load_workbook
+from openpyxl.utils import get_column_letter
 
-# Nome do arquivo Excel. Ele será acessado como /app/agendamentos.xlsx dentro do container.
-EXCEL_FILE_PATH = '/app/services/agendamentos.xlsx'
-# Se rodar localmente fora do Docker, ajuste o caminho ou use:
-# EXCEL_FILE_PATH = os.path.join(os.path.dirname(__file__), 'agendamentos.xlsx')
+# Caminho absoluto da planilha dentro do container (e refletido no host)
+BASE_DIR = os.path.dirname(__file__)
+PLAN_PATH = os.path.join(BASE_DIR, "agendamentos.xlsx")
+SHEET_NAME = "Agendamentos"
 
-logger = logging.getLogger(__name__) # Usa o logger configurado no app.py
+COLS = [
+    "Data", "Hora", "ClienteNome", "DataNascimento", "CPF",
+    "ChatID", "Status", "ValorPago", "CriadoEm", "Chave"
+]
 
-def _carregar_ou_criar_planilha():
-    """Carrega a planilha ou cria uma nova com cabeçalhos se não existir."""
-    try:
-        workbook = openpyxl.load_workbook(EXCEL_FILE_PATH)
-        logger.info(f"Planilha '{EXCEL_FILE_PATH}' carregada.")
-        # Garante que a planilha 'Agendamentos' exista
-        if 'Agendamentos' not in workbook.sheetnames:
-            sheet = workbook.create_sheet('Agendamentos')
-            headers = ["Data", "Hora", "ClienteID", "Status", "ValorPago", "TimestampRegistro"]
-            sheet.append(headers)
-            logger.info("Aba 'Agendamentos' criada com cabeçalhos.")
-            workbook.save(EXCEL_FILE_PATH)
-        else:
-            sheet = workbook['Agendamentos']
-            # Verifica se os cabeçalhos existem, caso contrário adiciona
-            if sheet.max_row == 0 or sheet['A1'].value != "Data":
-                headers = ["Data", "Hora", "ClienteID", "Status", "ValorPago", "TimestampRegistro"]
-                sheet.append(headers)
-                logger.info("Cabeçalhos adicionados à aba 'Agendamentos'.")
-                workbook.save(EXCEL_FILE_PATH)
+def _ensure_wb():
+    """Garante que a planilha exista com as colunas corretas."""
+    if not os.path.exists(PLAN_PATH):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = SHEET_NAME
+        ws.append(COLS)
+        wb.save(PLAN_PATH)
 
-        return workbook, sheet
-    except FileNotFoundError:
-        logger.warning(f"Arquivo '{EXCEL_FILE_PATH}' não encontrado. Criando um novo.")
-        workbook = openpyxl.Workbook()
-        sheet = workbook.active
-        sheet.title = 'Agendamentos'
-        headers = ["Data", "Hora", "ClienteID", "Status", "ValorPago", "TimestampRegistro"]
-        sheet.append(headers)
-        workbook.save(EXCEL_FILE_PATH)
-        logger.info(f"Arquivo '{EXCEL_FILE_PATH}' criado com cabeçalhos.")
-        return workbook, sheet
-    except Exception as e:
-        logger.error(f"Erro ao carregar ou criar a planilha: {e}", exc_info=True)
-        return None, None
+def _load_ws():
+    _ensure_wb()
+    wb = load_workbook(PLAN_PATH)
+    if SHEET_NAME not in wb.sheetnames:
+        ws = wb.create_sheet(SHEET_NAME)
+        ws.append(COLS)
+        wb.save(PLAN_PATH)
+    return wb, wb[SHEET_NAME]
 
-def verificar_disponibilidade(data_str, hora_str):
+def _row_to_dict(row) -> Dict[str, Any]:
+    return {COLS[i]: (row[i].value if i < len(row) else None) for i in range(len(COLS))}
+
+def _find_row_index_by_key(ws, chave: str) -> Optional[int]:
+    for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        if row and len(row) >= len(COLS) and row[COLS.index("Chave")] == chave:
+            return idx
+    return None
+
+def make_key(data_str: str, hora_str: str, chat_id: str) -> str:
+    return f"{data_str}_{hora_str}_{chat_id}"
+
+# ----------------- API pública usada no fluxo -----------------
+
+def listar_horarios_disponiveis(data_str: str,
+                                inicio: str = "08:00",
+                                fim: str = "18:00",
+                                passo_min: int = 30) -> List[str]:
     """
-    Verifica se a data e hora estão disponíveis na planilha.
-    Retorna True se disponível, False se ocupado.
+    Gera horários de 'inicio' a 'fim' pulando 'passo_min', e remove os já ocupados na data.
     """
-    workbook, sheet = _carregar_ou_criar_planilha()
-    if not sheet:
-        return False # Indica erro ao carregar planilha
+    wb, ws = _load_ws()
+    ocupados = set()
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row and row[0] == data_str:  # Data
+            ocupados.add(row[1])        # Hora
 
-    # Assumindo que Data está na coluna A (1) e Hora na coluna B (2) e Status na D (4)
-    # Status considerados como ocupado: "Confirmado" ou "Pendente Pagamento"
-    status_ocupado = ["Confirmado", "Pendente Pagamento"]
+    def _to_dt(hhmm: str) -> datetime:
+        return datetime.strptime(hhmm, "%H:%M")
 
-    try:
-        for row in range(2, sheet.max_row + 1): # Começa da linha 2 (abaixo dos cabeçalhos)
-            data_planilha = sheet.cell(row=row, column=1).value
-            hora_planilha = sheet.cell(row=row, column=2).value
-            status_planilha = sheet.cell(row=row, column=4).value
+    t = _to_dt(inicio)
+    end = _to_dt(fim)
+    slots = []
+    while t <= end:
+        hhmm = t.strftime("%H:%M")
+        if hhmm not in ocupados:
+            slots.append(hhmm)
+        t += timedelta(minutes=passo_min)
+    return slots
 
-            # Simplificando a comparação - pode precisar de tratamento de formato mais robusto
-            # Converte para string para comparar, se não forem string
-            data_planilha_str = str(data_planilha) if data_planilha else ""
-            hora_planilha_str = str(hora_planilha) if hora_planilha else ""
+def verificar_disponibilidade(data_str: str, hora_str: str) -> bool:
+    wb, ws = _load_ws()
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not row:
+            continue
+        if row[0] == data_str and row[1] == hora_str:  # Data, Hora
+            return False
+    return True
 
-
-            # Verifica se data e hora coincidem e se o status indica ocupado
-            if data_planilha_str == data_str and hora_planilha_str == hora_str and status_planilha in status_ocupado:
-                logger.info(f"Horário {data_str} {hora_str} encontrado como OCUPADO (Status: {status_planilha}).")
-                return False # Horário ocupado
-
-        logger.info(f"Horário {data_str} {hora_str} verificado como DISPONÍVEL.")
-        return True # Horário disponível
-    except Exception as e:
-        logger.error(f"Erro ao verificar disponibilidade na planilha: {e}", exc_info=True)
-        return False # Assume indisponível em caso de erro
-
-def adicionar_agendamento(data_str, hora_str, cliente_id, status="Pendente Pagamento", valor_pago=None):
+def adicionar_agendamento(data_str: str,
+                        hora_str: str,
+                        chat_id: str,
+                        status: str = "Pendente Pagamento",
+                        cliente_nome: Optional[str] = None,
+                        data_nasc: Optional[str] = None,
+                        cpf: Optional[str] = None,
+                        valor_pago: Optional[float] = None) -> str:
     """
-    Adiciona um novo agendamento na próxima linha vazia da planilha.
-    Retorna True se adicionado com sucesso, False caso contrário.
+    Adiciona uma linha de agendamento e retorna a 'chave' (Data_Hora_ChatID).
     """
-    workbook, sheet = _carregar_ou_criar_planilha()
-    if not sheet:
+    wb, ws = _load_ws()
+    chave = make_key(data_str, hora_str, chat_id)
+    criado_em = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    ws.append([
+        data_str, hora_str, cliente_nome, data_nasc, cpf,
+        chat_id, status, valor_pago, criado_em, chave
+    ])
+    wb.save(PLAN_PATH)
+    return chave
+
+def atualizar_status_por_chave(chave: str, novo_status: str, valor_pago: Optional[float] = None) -> bool:
+    """
+    Atualiza o 'Status' (e opcionalmente 'ValorPago') da linha com a 'chave' informada.
+    Retorna True se atualizou; False se não encontrou.
+    """
+    wb, ws = _load_ws()
+    row_idx = _find_row_index_by_key(ws, chave)
+    if not row_idx:
         return False
 
-    try:
-        timestamp_registro = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        nova_linha = [data_str, hora_str, cliente_id, status, valor_pago, timestamp_registro]
-        sheet.append(nova_linha)
-        workbook.save(EXCEL_FILE_PATH)
-        logger.info(f"Agendamento adicionado: {nova_linha}")
-        return True
-    except Exception as e:
-        logger.error(f"Erro ao adicionar agendamento na planilha: {e}", exc_info=True)
-        return False
+    status_col = COLS.index("Status") + 1
+    ws.cell(row=row_idx, column=status_col).value = novo_status
 
-# --- Funções futuras (placeholders) ---
-def atualizar_status(identificador, novo_status):
-    logger.warning("Função atualizar_status ainda não implementada.")
-    return False
+    if valor_pago is not None:
+        pago_col = COLS.index("ValorPago") + 1
+        ws.cell(row=row_idx, column=pago_col).value = float(valor_pago)
 
-def listar_agendamentos(data_filtro):
-    logger.warning("Função listar_agendamentos ainda não implementada.")
-    return "Função de listagem em construção."
+    wb.save(PLAN_PATH)
+    return True
+
+# ----------------- Helpers de debug -----------------
+
+def _read_rows() -> List[Dict[str, Any]]:
+    wb, ws = _load_ws()
+    out = []
+    for row in ws.iter_rows(min_row=2):
+        out.append(_row_to_dict(row))
+    return out

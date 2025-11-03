@@ -1,0 +1,42 @@
+﻿# ZapWaha — estrutura inicial
+
+## Como rodar (dev)
+- \python -m pip install -r requirements.txt\
+- \set FLASK_APP=src/zapwaha/app.sample.py\
+- \lask run --host=0.0.0.0 --port=5000\
+
+## Multi-tenant
+- Webhook: \POST /webhook/<tenant>\
+- Teste local: \POST /test/incoming?tenant=<slug>\
+
+## Tenants
+- Config por cliente em \	enants/<slug>/config.yml\
+- Templates em \	enants/<slug>/templates/pt-BR/*.txt\
+- Dados persistidos em \data/<slug>/\
+"@
+New-FileIfMissing "README.md" 
+
+# --------------------------
+# Scripts auxiliares
+# --------------------------
+ = @"
+param([Parameter(Mandatory=True)][string]\)
+
+function New-DirSafe([string]\){ if (!(Test-Path \)) { New-Item -ItemType Directory -Force \ | Out-Null } }
+
+New-DirSafe "tenants/\/templates/pt-BR"
+New-DirSafe "tenants/\/overrides"
+New-DirSafe "data/\"
+
+@"
+name: "\"
+timezone: "America/Sao_Paulo"
+price: 100.00
+pix_key: "pix@\.com"
+agenda_backend: "excel"
+agenda_file: "data/\/agendamentos.xlsx"
+accept_payment_methods:
+  - PIX
+  - CARTAO
+messages:
+  currency: "BRL"

@@ -6,6 +6,9 @@ class Waha:
     def __init__(self):
         self.__api_url = 'http://waha:3000'
 
+    def __init__(self, api_url=None, base_url=None, url=None):
+        self.base_url = api_url or base_url or url or os.getenv("WAHA_API_URL", "http://waha:3000")
+
     def send_message(self, chat_id, message):
         url = f'{self.__api_url}/api/sendText'
         headers = {
