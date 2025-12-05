@@ -1,6 +1,0 @@
-﻿Olá! Sou o assistente da {{tenant_name}}.
-Escolha uma opção:
-1) Agendar
-2) Info
-3) Dúvidas
-4) Pagamentos

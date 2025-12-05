@@ -4,7 +4,16 @@ import re
 from datetime import date, time, datetime, timedelta
 import logging
 
-# ==== UX helpers (rodapés e bullets) ====
+# =============================================================================
+# CONFIG GERAL
+# =============================================================================
+
+logger = logging.getLogger("ZapWaha")
+
+# =============================================================================
+# UX helpers (rodapés e bullets)
+# =============================================================================
+
 def _nav_footer(linhas: list[str]) -> str:
     barra = "─" * 42
     corpo = "\n".join(f"• {ln}" for ln in linhas)
@@ -17,15 +26,33 @@ def _bullets(itens: list[tuple[str, str, str]]) -> str:
 def _yes_no_footer(confirma_o_que: str) -> str:
     return _nav_footer([
         _bullets([("✅","sim", f"confirmar {confirma_o_que}"),
-                  ("✏️","não", f"ajustar {confirma_o_que}")])
+                ("✏️","não", f"ajustar {confirma_o_que}")])
     ])
 
-# -------------------------------
-# Estado (com fallback)
-# -------------------------------
+# =============================================================================
+# Estado / Serviços
+# =============================================================================
+
+# Cadastro / login de clientes (planilha)
 try:
-    from zapwaha.state.memory import state_manager  # esperado
+    from services import clientes_services as clientes
+    if hasattr(clientes, "init_planilha"):
+        clientes.init_planilha()
 except Exception:
+    clientes = None  # permite rodar sem cadastro em dev
+
+# Serviços (opcional)
+try:
+    from services.servicos import carregar_servicos, formatar_lista_servicos
+except Exception:
+    carregar_servicos = None
+    formatar_lista_servicos = None
+
+# State manager
+try:
+    from zapwaha.state.memory import state_manager  # implementação esperada
+except Exception:
+    # Fallback simples em memória (para dev)
     class _FallbackState:
         _mem = {}
         def get_state(self, chat_id): return self._mem.get(chat_id, {}).get("state", "MENU_PRINCIPAL")
@@ -44,27 +71,29 @@ except Exception:
             self._mem[chat_id] = {"state": st}
     state_manager = _FallbackState()
 
-# -------------------------------
 # Excel (import robusto)
-# -------------------------------
 try:
     from services import excel_services as excel
 except Exception:
     excel = None  # permite rodar sem Excel em dev
 
-logger = logging.getLogger("ZapWaha")
+# =============================================================================
+# Constantes / Config de fluxo
+# =============================================================================
 
-VALOR_CONSULTA = 150.00
+VALOR_SERVICO_PADRAO = 50.00
 DEFAULT_SLOTS = ["08:00","09:00","10:00","11:00","13:00","14:00","15:00","16:00","17:00"]
+
+# TIMEOUTS DO ATENDIMENTO HUMANO (em minutos)
+HUMAN_TIMEOUT_WHEN_WAITING_MIN = 10  # Tempo limite aguardando atendente aceitar
+HUMAN_TIMEOUT_WHEN_ACTIVE_MIN  = 0   # 0 = sem expiração durante atendimento ativo
 
 # ==== Admin config (ENV e opcional arquivo JSON) ====
 def _admin_ids() -> set[str]:
     ids = set()
-    # ENV
     raw = os.getenv("ADMIN_CHAT_IDS", "")
     if raw:
         ids.update(x.strip() for x in raw.split(",") if x.strip())
-    # arquivo opcional /app/config/admins.json  -> {"admins": ["...@c.us", "...@c.us"]}
     try:
         import json, pathlib
         p = pathlib.Path("/app/config/admins.json")
@@ -77,9 +106,10 @@ def _admin_ids() -> set[str]:
         pass
     return ids
 
-# -------------------------------
+# =============================================================================
 # Helpers de validação / parsing
-# -------------------------------
+# =============================================================================
+
 _re_date_full = re.compile(r"\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})\b")
 _re_date_dm   = re.compile(r"\b(\d{1,2})[\/\-\.](\d{1,2})\b(?!\s*\d)")
 _re_time      = re.compile(r"\b(\d{1,2}):(\d{2})\b")
@@ -95,9 +125,9 @@ def _safe_date(d:int,m:int,y:int) -> date|None:
 def parse_date_fuzzy_and_optional_time(text: str, default_year: int|None=None):
     """
     Aceita:
-      - DD/MM/AAAA, DD-MM-AAAA, DD.MM.AAAA
-      - DD/MM, DD-MM, DD.MM  -> completa com default_year (ou ano atual)
-      - opcional HH:MM
+    - DD/MM/AAAA, DD-MM-AAAA, DD.MM.AAAA
+    - DD/MM, DD-MM, DD.MM  -> completa com default_year (ou ano atual)
+    - opcional HH:MM
     Retorna: (data_str, hora_str|None, was_inferred)
     """
     text = (text or "").strip()
@@ -131,35 +161,6 @@ def parse_date_fuzzy_and_optional_time(text: str, default_year: int|None=None):
 
     return None, None, False
 
-def validar_nome(nome: str) -> bool:
-    return len((nome or "").strip()) >= 3 and " " in nome.strip()
-
-def validar_data_nascimento(nasc_str: str) -> bool:
-    m = _re_date_full.fullmatch((nasc_str or "").strip())
-    if not m: return False
-    dd, mm, yy = map(int, m.groups())
-    dt = _safe_date(dd, mm, yy)
-    if not dt: return False
-    hoje = date.today()
-    if dt >= hoje:
-        return False
-    idade = (hoje - dt).days // 365
-    return 0 <= idade <= 120
-
-def _cpf_puro(cpf: str) -> str:
-    return re.sub(r"\D", "", cpf or "")
-
-def validar_cpf(cpf: str) -> bool:
-    cpf = _cpf_puro(cpf)
-    if (not cpf) or len(cpf) != 11 or cpf == cpf[0] * 11:
-        return False
-    def dv(digs):
-        s = sum(int(digs[i]) * (len(digs)+1 - i) for i in range(len(digs)))
-        r = (s * 10) % 11
-        return 0 if r == 10 else r
-    d1 = dv(cpf[:9]); d2 = dv(cpf[:10])
-    return int(cpf[9]) == d1 and int(cpf[10]) == d2
-
 def format_money(v: float) -> str:
     return f"R$ {v:.2f}".replace(".", ",")
 
@@ -176,24 +177,19 @@ def _format_grade_compact(data_str: str, slots: list[str], livres: set[str]) -> 
         if livre: livres_flag = True
         linhas.append(f"{i} - {h} - {status}")
     rodape = ("👉 Digite o número do horário desejado."
-              if livres_flag else
-              "👉 Nenhum horário livre. Envie outra data (DD/MM/AAAA).")
+            if livres_flag else
+            "👉 Nenhum horário livre. Envie outra data (DD/MM/AAAA).")
     bloc = "\n".join([top, header, sep, *linhas, rodape, bot])
     return bloc, livres_flag
 
-# -------------------------------
+# =============================================================================
 # Estados (cliente)
-# -------------------------------
+# =============================================================================
+
 S_MENU = "MENU_PRINCIPAL"
 S_MENU_OPCAO = "ESPERANDO_OPCAO_MENU"
 
 S_AG_SUBMENU = "AGENDAMENTO_ESCOLHER_ACAO"
-S_NOME = "AG_NOME"
-S_NOME_CONF = "AG_NOME_CONF"
-S_NASC = "AG_NASC"
-S_NASC_CONF = "AG_NASC_CONF"
-S_CPF = "AG_CPF"
-S_CPF_CONF = "AG_CPF_CONF"
 
 S_DATA = "AG_DATA"
 S_DATA_CONF = "AG_DATA_CONF"
@@ -209,15 +205,19 @@ S_HUM_PEDIR_RESUMO = "HUM_PEDIR_RESUMO"
 S_HUM_AGUARDANDO   = "HUM_AGUARDANDO"
 S_HUM_ATIVO        = "HUM_ATIVO"
 
-# -------------------------------
+# =============================================================================
 # Estados (admin)
-# -------------------------------
+# =============================================================================
+
 S_ADMIN_MENU  = "ADMIN_MENU"
 S_ADMIN_RELAY = "ADMIN_RELAY"
 
-# -------------------------------
+
+
+# =============================================================================
 # Estruturas de handoff
-# -------------------------------
+# =============================================================================
+
 _ticket_seq = 100
 _tickets: dict[int, dict] = {}      # ticket_id -> {client_id, nome, cpf, resumo, status, admin_id}
 _relays: dict[str, str] = {}        # admin_id -> client_id (sessão ativa)
@@ -233,10 +233,9 @@ def _find_ticket_by_client(client_id: str) -> int|None:
             return tid
     return None
 
-# -------------------------------
+# =============================================================================
 # Timeout de atendimento humano
-# -------------------------------
-HUMAN_TIMEOUT_MIN = 10  # ajuste livre para testes
+# =============================================================================
 
 def _now():
     return datetime.now()
@@ -250,28 +249,32 @@ def _parse_iso(s: str) -> datetime | None:
     except Exception:
         return None
 
-def _extend_handoff_timeout(chat_id: str, minutes: int = HUMAN_TIMEOUT_MIN):
-    """Renova o prazo de expiração do ticket."""
-    expires_at = _now() + timedelta(minutes=minutes)
-    state_manager.update_data(chat_id, relay_expires_at=_iso(expires_at))
+def _get_timeout_minutes(chat_id: str) -> int:
+    dt = state_manager.get_data(chat_id) or {}
+    status = dt.get("relay_status")
+    if status == "active":
+        return HUMAN_TIMEOUT_WHEN_ACTIVE_MIN
+    return HUMAN_TIMEOUT_WHEN_WAITING_MIN
+
+def _extend_handoff_timeout(chat_id: str, minutes: int | None = None):
+    if minutes is None:
+        minutes = _get_timeout_minutes(chat_id)
+    if minutes and minutes > 0:
+        expires_at = _now() + timedelta(minutes=minutes)
+        state_manager.update_data(chat_id, relay_expires_at=_iso(expires_at))
+    else:
+        state_manager.update_data(chat_id, relay_expires_at=None)
 
 def _reset_handoff_fields(chat_id: str):
-    """Limpa SOMENTE campos do handoff (mantém nome/cpf/etc)."""
     state_manager.update_data(
         chat_id,
-        relay_status=None,          # "waiting" | "active" | None
+        relay_status=None,
         relay_active=False,
         relay_admin=None,
         relay_expires_at=None,
-        # ticket_id permanece (histórico). Remova se preferir:
-        # ticket_id=None,
     )
 
 def _check_and_expire_handoff(send, chat_id: str) -> bool:
-    """
-    Se o ticket do cliente já expirou, encerra e avisa. Retorna True se encerrou.
-    Checagem pontual (para este chat_id).
-    """
     dt = state_manager.get_data(chat_id) or {}
     status = dt.get("relay_status")
     if status not in ("waiting", "active"):
@@ -280,21 +283,18 @@ def _check_and_expire_handoff(send, chat_id: str) -> bool:
     ex_str = dt.get("relay_expires_at")
     ex_dt = _parse_iso(ex_str) if ex_str else None
     if not ex_dt or _now() < ex_dt:
-        return False  # ainda válido
+        return False
 
     admin_id = dt.get("relay_admin")
     tid = dt.get("ticket_id")
     ticket_label = f"#{tid}" if tid else "(sem ticket)"
 
-    # quebra vínculo em _relays
     if admin_id and _relays.get(admin_id) == chat_id:
         _relays.pop(admin_id, None)
 
-    # fecha ticket se existir
     if tid and tid in _tickets:
         _tickets[tid]["status"] = "closed"
 
-    # mensagens
     if status == "waiting":
         send(chat_id, "⏰ O atendimento foi *encerrado* porque não foi assumido a tempo.\nSe preferir, peça *Falar com atendente* novamente.")
     else:
@@ -303,16 +303,11 @@ def _check_and_expire_handoff(send, chat_id: str) -> bool:
     if admin_id:
         send(admin_id, f"⏹️ Ticket {ticket_label} encerrado por inatividade.")
 
-    # reset
     _reset_handoff_fields(chat_id)
     state_manager.set_state(chat_id, S_MENU)
     return True
 
 def _sweep_expired_handoffs(send):
-    """
-    Varredura global: fecha tickets 'waiting' ou 'active' expirados.
-    Dispara a cada mensagem recebida (qualquer usuário).
-    """
     for tid, tk in list(_tickets.items()):
         status = tk.get("status")
         if status not in ("waiting", "active"):
@@ -324,7 +319,7 @@ def _sweep_expired_handoffs(send):
         ex_str = dt.get("relay_expires_at")
         ex_dt = _parse_iso(ex_str) if ex_str else None
         if not ex_dt or _now() < ex_dt:
-            continue  # ainda válido
+            continue
 
         admin_id = dt.get("relay_admin")
         prev_status = status
@@ -342,9 +337,21 @@ def _sweep_expired_handoffs(send):
         if admin_id:
             send(admin_id, f"⏹️ Ticket #{tid} encerrado por inatividade.")
 
-# -------------------------------
+
+
+def _telefone_from_chat_id(chat_id: str) -> str:
+    return re.sub(r"\D","", (chat_id or "").split("@")[0])
+
+def _must_force_auth(chat_id: str) -> bool:
+    # Bot sempre aberto. O login é exigido apenas
+    # dentro dos handlers de negócio (ex.: opção 1 e 4).
+    return False
+
+
+# =============================================================================
 # Pré-reserva e atualização
-# -------------------------------
+# =============================================================================
+
 def _make_key(data_str: str, hora_str: str, chat_id: str) -> str:
     if excel and hasattr(excel, "make_key"):
         try:
@@ -417,9 +424,22 @@ def _update_status_confirmado(chat_id: str) -> bool:
 
     return False
 
-# -------------------------------
-# Entradas de fluxo (públicas)
-# -------------------------------
+# =============================================================================
+# Limpeza de dados do FLUXO (preserva login)
+# =============================================================================
+
+def _clear_flow_fields(chat_id: str):
+    dt = state_manager.get_data(chat_id) or {}
+    keep_keys = ("nome", "data_nascimento", "cpf", "cliente_cpf", "cliente_email", "cliente_telefone")
+    keep = {k: v for k, v in dt.items() if k in keep_keys and v}
+    state_manager.clear_data(chat_id)
+    if keep:
+        state_manager.update_data(chat_id, **keep)
+
+# =============================================================================
+# Roteador principal
+# =============================================================================
+
 def route_message(send, chat_id: str, text: str):
     t = (text or "").strip()
 
@@ -430,7 +450,7 @@ def route_message(send, chat_id: str, text: str):
     if chat_id in _admin_ids():
         return _route_admin(send, chat_id, t)
 
-    # Checa expiração da sessão deste cliente
+    # Checa expiração da sessão deste cliente (só relevante se houver handoff ativo)
     if _check_and_expire_handoff(send, chat_id):
         return
 
@@ -440,172 +460,124 @@ def route_message(send, chat_id: str, text: str):
 
     st = state_manager.get_state(chat_id)
 
-    # 👉 CORREÇÃO: rotear o estado de pedir resumo (opção 4)
-    if st == S_HUM_PEDIR_RESUMO:
-        return _handle_humano_resumo(send, chat_id, t)
-    if st == S_HUM_AGUARDANDO:
-        return _handle_humano_aguardando(send, chat_id, t)
-    if st == S_HUM_ATIVO:
-        return _relay_from_client(send, chat_id, t)
+    # Atendimento humano states
+    if st == S_HUM_PEDIR_RESUMO:  return _handle_humano_resumo(send, chat_id, t)
+    if st == S_HUM_AGUARDANDO:    return _handle_humano_aguardando(send, chat_id, t)
+    if st == S_HUM_ATIVO:         return _relay_from_client(send, chat_id, t)
 
-    if st in (S_MENU, None):
-        return _send_main_menu(send, chat_id)
+    # Menu e subfluxos
+    if st in (S_MENU, None):      return _send_main_menu(send, chat_id)
+    if st == S_MENU_OPCAO:        return _handle_menu_opcao(send, chat_id, t)
+    if st == S_AG_SUBMENU:        return _handle_ag_submenu(send, chat_id, t)
 
-    if st == S_MENU_OPCAO:
-        return _handle_menu_opcao(send, chat_id, t)
+    if st == S_DATA:              return _handle_data(send, chat_id, t)
+    if st == S_DATA_CONF:         return _handle_data_conf(send, chat_id, t)
+    if st == S_MOSTRAR_HORAS:     return _handle_escolha_hora_index(send, chat_id, t)
+    if st == S_ESCOLHER_HORA:     return _handle_hora_livre(send, chat_id, t)
 
-    if st == S_AG_SUBMENU:
-        return _handle_ag_submenu(send, chat_id, t)
-
-    if st == S_NOME:
-        return _handle_nome(send, chat_id, t)
-    if st == S_NOME_CONF:
-        return _handle_nome_conf(send, chat_id, t)
-
-    if st == S_NASC:
-        return _handle_nasc(send, chat_id, t)
-    if st == S_NASC_CONF:
-        return _handle_nasc_conf(send, chat_id, t)
-
-    if st == S_CPF:
-        return _handle_cpf(send, chat_id, t)
-    if st == S_CPF_CONF:
-        return _handle_cpf_conf(send, chat_id, t)
-
-    if st == S_DATA:
-        return _handle_data(send, chat_id, t)
-    if st == S_DATA_CONF:
-        return _handle_data_conf(send, chat_id, t)
-    if st == S_MOSTRAR_HORAS:
-        return _handle_escolha_hora_index(send, chat_id, t)
-    if st == S_ESCOLHER_HORA:
-        return _handle_hora_livre(send, chat_id, t)
-
-    if st == S_ESCOLHENDO_PAGTO:
-        return _handle_escolha_pagamento(send, chat_id, t)
-
+    if st == S_ESCOLHENDO_PAGTO:  return _handle_escolha_pagamento(send, chat_id, t)
     if st in (S_AGUARDANDO_PIX, S_AGUARDANDO_LINK):
         return _handle_confirmacao_pagamento(send, chat_id, t)
 
     return _send_main_menu(send, chat_id)
 
-# -------------------------------
+
+# =============================================================================
 # Blocos de fluxo - CLIENTE
-# -------------------------------
+# =============================================================================
+
 def _send_main_menu(send, chat_id):
-    send(chat_id,
-        "👋 *Bem-vindo(a) à Clínica!*\n\n"
+    """Menu principal da barbearia"""
+    send(
+        chat_id,
+        "👋 *Bem-vindo(a) à Barbearia Veinho Corts!* ✂️💈\n\n"
         "Como podemos te ajudar hoje?\n\n"
-        "1️⃣ Agendar ou Gerenciar Aulas\n"
-        "2️⃣ Informações e Valores\n"
+        "1️⃣ Agendar Corte ou Serviço\n"
+        "2️⃣ Serviços e Valores\n"
         "3️⃣ Dúvidas Frequentes\n"
-        "4️⃣ Falar com atendente"
-        + _nav_footer(["Responda com *1*, *2*, *3* ou *4*"]))
+        "4️⃣ Falar com Atendente" + _nav_footer(["Responda com *1*, *2*, *3* ou *4*"])
+    )
     state_manager.set_state(chat_id, S_MENU_OPCAO)
 
 def _handle_menu_opcao(send, chat_id, t):
+    """Roteamento do menu principal"""
+    t = (t or "").strip()
+
     if t == "1":
-        send(chat_id,
-            "🗓️ *Agendamento e Aulas*\n\n"
-            "1. Agendar nova aula/consulta\n"
-            "2. Confirmar minha próxima aula\n"
-            "3. Remarcar aula\n"
-            "4. Cancelar aula"
-            + _nav_footer(["Responda com *1*, *2*, *3* ou *4*"]))
+        send(
+            chat_id,
+            "✂️ *Agendamento na Barbearia*\n\n"
+            "1. Agendar novo corte/serviço\n"
+            "2. Consultar meu próximo horário\n" +
+            "3. Remarcar horário\n" +
+            "4. Cancelar horário" + _nav_footer(["Responda com *1*, *2*, *3* ou *4*"])
+        )
         state_manager.set_state(chat_id, S_AG_SUBMENU)
     elif t == "2":
-        send(chat_id, "Opção 2 (Informações) - Em construção...\nDigite *menu* para voltar.")
+        if carregar_servicos and formatar_lista_servicos:
+            try:
+                servs = carregar_servicos()
+                texto = formatar_lista_servicos(servs)
+                send(chat_id, texto + _nav_footer(["Digite *menu* para voltar"]))
+            except Exception:
+                send(chat_id, "Tabela de serviços indisponível no momento. Digite *menu* para voltar.")
+        else:
+            send(
+                chat_id,
+                "💈 *Serviços e Valores da Barbearia*\n\n"
+                "✂️ Corte de Cabelo - R$ 50,00\n"
+                "🧔 Barba - R$ 40,00\n"
+                "💯 Combo (Corte + Barba) - R$ 80,00\n"
+                "👁️ Sobrancelha - R$ 20,00\n"
+                "💧 Hidratação Capilar - R$ 60,00\n"
+                "🎨 Luzes/Coloração - R$ 120,00\n\n"
+                "_Horário de funcionamento: Seg a Sex 9h-19h, Sáb 9h-17h_"
+                + _nav_footer(["Digite *menu* para voltar"])
+            )
         state_manager.set_state(chat_id, S_MENU)
+
     elif t == "3":
-        send(chat_id, "Opção 3 (Dúvidas) - Em construção...\nDigite *menu* para voltar.")
+        send(
+            chat_id,
+            "❓ *Dúvidas Frequentes*\n\n"
+            "📍 *Onde ficamos?*\n"
+            "Rua Exemplo, 123 - Centro\n\n"
+            "⏰ *Horário de funcionamento?*\n"
+            "Seg a Sex: 9h às 19h\n"
+            "Sábado: 9h às 17h\n"
+            "Domingo: Fechado\n\n"
+            "💳 *Formas de pagamento?*\n"
+            "PIX, Cartão (débito/crédito), Dinheiro\n\n"
+            "📱 *Como remarcar?*\n"
+            "Digite *menu* e escolha opção 1, depois opção 3\n\n"
+            "⚠️ *Política de cancelamento?*\n"
+            "Cancele com no mínimo 2h de antecedência"
+            + _nav_footer(["Digite *menu* para voltar"])
+        )
         state_manager.set_state(chat_id, S_MENU)
     elif t == "4":
         return _start_handoff(send, chat_id)
+
     else:
         send(chat_id, "Opção inválida. Digite 1, 2, 3 ou 4, ou *menu* para voltar.")
 
 def _handle_ag_submenu(send, chat_id, t):
+    t = (t or "").strip()
+
     if t == "1":
-        send(chat_id,
-            "Vamos começar seu cadastro 😊\n\n"
-            "✍️ Qual é *seu nome completo*?"
-            + _nav_footer(["Ex.: *Maria Clara Souza*"]))
-        state_manager.set_state(chat_id, S_NOME)
-    else:
-        send(chat_id, "Em breve.\nDigite *menu* para voltar ou *1* para agendar nova aula.")
-
-def _handle_nome(send, chat_id, nome):
-    if not validar_nome(nome):
-        return send(chat_id, "Preciso do *nome completo*. Pode escrever novamente?")
-    state_manager.update_data(chat_id, nome_tmp=(nome or "").strip())
-    state_manager.set_state(chat_id, S_NOME_CONF)
-    send(chat_id,
-        f"Você confirma seu nome como:\n\n*{nome.strip()}* ?"
-        + _yes_no_footer("o *nome*"))
-
-def _handle_nome_conf(send, chat_id, t):
-    if t.lower() == "sim":
-        dt = state_manager.get_data(chat_id)
-        state_manager.update_data(chat_id, nome=dt.get("nome_tmp"))
-        send(chat_id,
-            "📅 Qual é a sua *data de nascimento*? (formato *DD/MM/AAAA*)"
-            + _nav_footer(["Ex.: *15/04/1995*"]))
-        state_manager.set_state(chat_id, S_NASC)
-    elif t.lower() in ("não", "nao"):
-        send(chat_id, "Sem problemas. Qual é *seu nome completo*?")
-        state_manager.set_state(chat_id, S_NOME)
-    else:
-        send(chat_id, "Por favor responda *sim* ou *não*.")
-
-def _handle_nasc(send, chat_id, nasc):
-    nasc = (nasc or "").strip()
-    if not validar_data_nascimento(nasc):
-        return send(chat_id, "Formato inválido ou data incoerente. Informe no formato *DD/MM/AAAA* (ex: 15/04/1995).")
-    state_manager.update_data(chat_id, nasc_tmp=nasc)
-    state_manager.set_state(chat_id, S_NASC_CONF)
-    send(chat_id, f"Confirma sua *data de nascimento* como *{nasc}*?"
-        + _yes_no_footer("a *data de nascimento*"))
-
-def _handle_nasc_conf(send, chat_id, t):
-    if t.lower() == "sim":
-        dt = state_manager.get_data(chat_id)
-        state_manager.update_data(chat_id, data_nascimento=dt.get("nasc_tmp"))
-        send(chat_id,
-        "🪪 Me informe seu *CPF* (apenas números)."
-        + _nav_footer(["Ex.: *12345678909*"]))
-        state_manager.set_state(chat_id, S_CPF)
-    elif t.lower() in ("não", "nao"):
-        send(chat_id, "Ok, qual é a sua *data de nascimento*? (DD/MM/AAAA)")
-        state_manager.set_state(chat_id, S_NASC)
-    else:
-        send(chat_id, "Responda *sim* ou *não*, por favor.")
-
-def _handle_cpf(send, chat_id, cpf):
-    if not validar_cpf(cpf):
-        return send(chat_id, "CPF inválido. Envie novamente (apenas números).")
-    cpf_num = _cpf_puro(cpf)
-    state_manager.update_data(chat_id, cpf_tmp=cpf_num)
-    state_manager.set_state(chat_id, S_CPF_CONF)
-    send(chat_id,
-        f"Confirma seu *CPF* como *{cpf_num[:3]}.{cpf_num[3:6]}.{cpf_num[6:9]}-{cpf_num[9:]}*?"
-        + _yes_no_footer("o *CPF*"))
-
-def _handle_cpf_conf(send, chat_id, t):
-    if t.lower() == "sim":
-        dt = state_manager.get_data(chat_id)
-        state_manager.update_data(chat_id, cpf=dt.get("cpf_tmp"))
-        send(chat_id,
-            "Perfeito! 🎯\n"
-            "Para qual *data* você quer agendar? (formato *DD/MM/AAAA* ou *DD/MM*)"
-            + _nav_footer(["Ex.: *28/10/2025* ou *28/10*"]))
+        send(
+            chat_id,
+            "📅 *Para qual data você quer agendar?*\n\n"
+            "Digite no formato *DD/MM/AAAA* ou *DD/MM*"
+            + _nav_footer(["Ex.: *28/10/2025* ou *28/10*"])
+        )
         state_manager.set_state(chat_id, S_DATA)
-    elif t.lower() in ("não", "nao"):
-        send(chat_id, "Ok, me informe novamente seu *CPF* (apenas números).")
-        state_manager.set_state(chat_id, S_CPF)
-    else:
-        send(chat_id, "Responda *sim* ou *não*, por favor.")
 
-# ===== datas =====
+    else:
+        send(chat_id, "Em breve.\nDigite *menu* para voltar ou *1* para agendar um novo horário.")
+
+# ===== datas / horários =====
+
 def _handle_data(send, chat_id, texto):
     data_str, hora_str, inferred = parse_date_fuzzy_and_optional_time(
         texto, default_year=date.today().year
@@ -702,35 +674,35 @@ def _try_reserva_or_ask_time(send, chat_id, data_str: str, hora_str: str):
     if not ok:
         return
 
-    valor_str = format_money(VALOR_CONSULTA)
+    valor_str = format_money(VALOR_SERVICO_PADRAO)
     send(chat_id,
-        f"✅ Horário *{data_str} às {hora_str}* reservado para pagamento.\n\n"
-        f"💳 Valor: *{valor_str}*\n\n"
-        "Escolha a forma de pagamento:\n"
+        f"✅ *Horário Reservado!*\n\n"
+        f"📅 Data: *{data_str}*\n"
+        f"⏰ Horário: *{hora_str}*\n"
+        f"💰 Valor: *{valor_str}*\n\n"
+        "Escolha a forma de pagamento:\n\n"
         "1️⃣ PIX (Copia e Cola)\n"
-        "2️⃣ Cartão de Crédito (Link)\n\n"
-        "_Obs.: a pré-reserva vale por *10 minutos*._"
+        "2️⃣ Cartão de Crédito (Link de pagamento)\n\n"
+        "_⚠️ Obs.: a pré-reserva vale por *10 minutos*._"
         + _nav_footer(["Responda *1* para PIX ou *2* para Cartão"]))
-
-    state_manager.set_state(chat_id, S_ESCOLHENDO_PAGTO)
-    state_manager.update_data(chat_id, data=data_str, hora=hora_str)
+    state_manager.set_state(chat_id, S_ESCOLHENDO_PAGTO, data={"data": data_str, "hora": hora_str})
 
 def _handle_escolha_pagamento(send, chat_id, t):
     if t == "1":
-        pix_code = "00020126...CHAVE_PIX_CLINICA...52040000..."
+        pix_code = "00020126...CHAVE_PIX_BARBEARIA...52040000..."
         send(chat_id,
-            "🔗 *PIX Copia e Cola*:\n"
+            "🔗 *Pagamento via PIX*\n\n"
             f"`{pix_code}`\n\n"
-            "Após pagar, responda *paguei* aqui para confirmarmos."
+            "📱 Copie o código acima e cole no app do seu banco.\n\n"
+            "Após realizar o pagamento, responda *paguei* aqui para confirmarmos seu horário."
             + _nav_footer(["Comando rápido: *paguei*"]))
         state_manager.set_state(chat_id, S_AGUARDANDO_PIX)
     elif t == "2":
         link = "https://pagamento.simulado/link123"
         send(chat_id,
-            "💳 *Pagamento por Cartão*\n"
-            f"Acesse: {link}\n\n"
-            "Depois de concluir, responda *paguei* aqui."
-            + _nav_footer(["Comando rápido: *paguei*"]))
+            "💳 *Pagamento por Cartão de Crédito*\n\n"
+            f"Acesse o link para pagar com segurança:\n{link}\n\n"
+            "Após realizar o pagamento, responda *paguei* aqui para confirmarmos." + _nav_footer(["Comando rápido: *paguei*"]))
         state_manager.set_state(chat_id, S_AGUARDANDO_LINK)
     else:
         send(chat_id, "Opção inválida. Responda *1* para PIX ou *2* para Cartão.")
@@ -746,38 +718,43 @@ def _handle_confirmacao_pagamento(send, chat_id, t):
 
     if atualizado:
         send(chat_id,
-            f"🎉 Pagamento confirmado!\n"
-            f"Seu agendamento para *{data_ag} às {hora_ag}* está *CONFIRMADO*."
+            f"✅ *Pagamento confirmado!*\n\n"
+            f"Seu horário para *{data_ag} às {hora_ag}* está *CONFIRMADO*.\n\n"
+            f"💈 Te esperamos na barbearia!\n"
+            f"Qualquer dúvida, é só chamar."
             + _nav_footer(["Digite *menu* para voltar ao início"]))
     else:
         logger.warning(f"[FLOW] Não foi possível atualizar status para Confirmado (data={data_ag}, hora={hora_ag}).")
         send(chat_id,
-            f"🎉 Pagamento recebido!\n"
-            f"Seu agendamento para *{data_ag} às {hora_ag}* está *PRÉ-CONFIRMADO*.\n"
-            "Um atendente finalizará a confirmação em instantes."
+            f"✅ *Pagamento recebido!*\n\n"
+            f"Seu horário para *{data_ag} às {hora_ag}* está *PRÉ-CONFIRMADO*.\n"
+            f"Um atendente finalizará a confirmação em instantes.\n\n"
+            f"💈 Te esperamos na barbearia!"
             + _nav_footer(["Digite *menu* para voltar ao início"]))
 
     send(chat_id, "Posso ajudar em algo mais? Digite *menu* para voltar ao início.")
     state_manager.set_state(chat_id, S_MENU)
-    state_manager.clear_data(chat_id)
+    _clear_flow_fields(chat_id)
 
 # ======= Atendimento humano (cliente) =======
+
 def _start_handoff(send, chat_id):
     send(chat_id,
-         "🧑‍💼 *Falar com atendente*\n"
-         "Escreva uma breve mensagem explicando sua dúvida/solicitação. Vou repassar ao atendente e avisar quando ele entrar na conversa."
-         + _nav_footer(["Ex.: *Quero tirar dúvidas sobre horários e valores*"]))
+         "👨‍💼 *Falar com Atendente*\n\n"
+         "Escreva uma breve mensagem explicando sua dúvida ou solicitação. \n"
+         "Vou repassar ao atendente e avisar quando ele entrar na conversa.\n\n"
+         "_Exemplos: Quero saber sobre pacotes, Tenho uma ocasião especial, etc._"
+         + _nav_footer(["Digite sua mensagem agora"]))
     state_manager.set_state(chat_id, S_HUM_PEDIR_RESUMO)
 
 def _handle_humano_resumo(send, chat_id, resumo):
     resumo = (resumo or "").strip()
     if not resumo:
         return send(chat_id, "Pode descrever rapidamente sua dúvida?")
-    # cria/guarda ticket
     tid = _find_ticket_by_client(chat_id) or _new_ticket_id()
     dt = state_manager.get_data(chat_id)
-    nome = dt.get("nome") or "(sem nome)"
-    cpf  = dt.get("cpf") or "(sem CPF)"
+    nome = dt.get("nome") or "Cliente"
+    cpf  = dt.get("cpf") or ""
     _tickets[tid] = {
         "client_id": chat_id, "nome": nome, "cpf": cpf,
         "resumo": resumo, "status": "waiting", "admin_id": None
@@ -790,9 +767,8 @@ def _handle_humano_resumo(send, chat_id, resumo):
         ticket_id=tid
     )
     state_manager.set_state(chat_id, S_HUM_AGUARDANDO)
-    _extend_handoff_timeout(chat_id)  # inicia relógio
+    _extend_handoff_timeout(chat_id)
 
-    # notifica admins (se houver)
     admins = _admin_ids()
     if admins:
         for admin in admins:
@@ -840,10 +816,12 @@ def _maybe_close_relay_by_client(send, client_id, by_client_cmd=False):
         send(admin_id, f"❕ Atendimento com `{client_id}` foi encerrado pelo cliente.")
     return
 
-# -------------------------------
+# =============================================================================
 # Blocos de fluxo - ADMIN
-# -------------------------------
+# =============================================================================
+
 def _route_admin(send, admin_id: str, t: str):
+    # Se estiver em relay humano → repassa a mensagem ao cliente
     if _relays.get(admin_id):
         client_id = _relays.get(admin_id)
 
@@ -851,7 +829,7 @@ def _route_admin(send, admin_id: str, t: str):
             state_manager.set_state(admin_id, S_ADMIN_MENU)
             return _send_admin_main_menu(send, admin_id)
 
-        if t.lower().startswith("/encerrar"):
+        if (t or "").lower().startswith("/encerrar"):
             _relays.pop(admin_id, None)
             tid = _find_ticket_by_client(client_id)
             if tid and tid in _tickets:
@@ -867,8 +845,11 @@ def _route_admin(send, admin_id: str, t: str):
         send(client_id, f"👨‍💼 *Atendente*: {t}")
         return
 
-    if t.startswith("/aceitar"):
-        parts = t.split()
+    # --- Comandos rápidos ---
+    txt = (t or "").strip()
+
+    if txt.startswith("/aceitar"):
+        parts = txt.split()
         target = parts[1] if len(parts) > 1 else ""
         client_id = None
         if target.startswith("#"):
@@ -904,31 +885,47 @@ def _route_admin(send, admin_id: str, t: str):
         state_manager.set_state(admin_id, S_ADMIN_RELAY)
         return
 
-    if t.lower() in ("menu", "inicio", "início", "admin"):
+    if txt.startswith("/logins"):
+        parts = txt.split()
+        try:
+            limit = int(parts[1]) if len(parts) > 1 else 20
+        except Exception:
+            limit = 20
+        return _admin_list_logins(send, admin_id, limit=limit)
+
+    if txt.lower() in ("menu", "inicio", "início", "admin"):
         state_manager.set_state(admin_id, S_ADMIN_MENU)
         return _send_admin_main_menu(send, admin_id)
 
+    # Garante estado de menu
     st = state_manager.get_state(admin_id)
     if st != S_ADMIN_MENU:
         state_manager.set_state(admin_id, S_ADMIN_MENU)
         return _send_admin_main_menu(send, admin_id)
 
-    if t == "1":
+    # Opções de menu
+    if txt == "1":
         return _admin_list_agendamentos_hoje(send, admin_id)
-    if t == "2":
+    if txt == "2":
         return _admin_assumir_proximo_cliente(send, admin_id)
-    if t == "3":
+    if txt == "3":
         return _admin_list_chamados_abertos(send, admin_id)
+    if txt == "4":
+        return _admin_list_logins(send, admin_id, limit=20)
 
     return _send_admin_main_menu(send, admin_id)
 
 def _send_admin_main_menu(send, admin_id):
-    send(admin_id,
-        "🛠️ *Painel do Admin*\n\n"
+    send(
+        admin_id,
+        "🔧 *Painel Admin - Barbearia Veinho Corts*\n\n"
         "1️⃣ Ver agendamentos do dia\n"
         "2️⃣ Assumir próximo cliente\n"
-        "3️⃣ Chamados abertos\n\n"
-        "_Comandos:_ `/aceitar #<ticket>` • `/encerrar` • `menu`")
+        "3️⃣ Chamados abertos\n"
+        "4️⃣ Logins (vínculos e sessões)\n\n"
+        "_Comandos:_ `/aceitar #<ticket>` • `/encerrar` • `menu`\n"
+        "_Atalhos:_ `/logins` • `/logins 50`"
+    )
 
 def _admin_list_agendamentos_hoje(send, admin_id):
     hoje = date.today().strftime("%d/%m/%Y")
@@ -986,10 +983,138 @@ def _admin_assumir_proximo_cliente(send, admin_id):
     send(client_id, "👋 Um atendente entrou na conversa. Você já pode enviar suas mensagens aqui.")
     state_manager.set_state(admin_id, S_ADMIN_RELAY)
 
-# ===== roteamento auxiliar de estados =====
-def _handle_humano_resumo_or_route(send, chat_id, t):
-    st = state_manager.get_state(chat_id)
-    if st == S_HUM_PEDIR_RESUMO:
-        return _handle_humano_resumo(send, chat_id, t)
-    if st == S_HUM_AGUARDANDO:
-        return _handle_humano_aguardando(send, chat_id, t)
+def _admin_list_logins(send, admin_id, limit: int = 20, page: int = 1):
+    """
+    Lista vínculos de login em blocos:
+    --------------
+    ℹ️: <ID>
+    👤: <Nome>
+    🪪: <CPF formatado>
+    --------------
+    Considera como 'vínculo' quem tem CPF + ChatId.
+    """
+    def _digits(s):
+        return "".join(ch for ch in str(s or "") if ch.isdigit())
+
+    links = []
+
+    # === 1) Preferir clientes_services (mais confiável no seu setup) ===
+    try:
+        if clientes and hasattr(clientes, "list_all_clients"):
+            rows = clientes.list_all_clients(offset=0, limit=10_000) or []
+            for r in rows:
+                cpf = _digits(r.get("CPF") or r.get("Cpf") or "")
+                chat = (r.get("ChatId") or r.get("ChatID") or r.get("chat_id") or r.get("WhatsApp") or "").strip()
+                if not cpf or not chat:
+                    continue  # só contamos vínculos reais
+                links.append({
+                    "id": str(r.get("ID") or r.get("Id") or r.get("id") or "").strip(),
+                    "chat_id": chat,
+                    "cpf": cpf,
+                    "nome": str(r.get("Nome") or r.get("ClienteNome") or "").strip()
+                })
+    except Exception as e:
+        logger.warning(f"[ADMIN] list_all_clients falhou: {e}")
+
+    # === 2) Se não veio nada, tentar helper opcional de auth ===
+    if not links:
+        auth_list = globals().get("_auth_list_links")
+        try:
+            if callable(auth_list):
+                raw = auth_list() or []
+                for lk in raw:
+                    cpf = _digits(lk.get("cpf"))
+                    chat = (lk.get("chat_id") or lk.get("jid") or lk.get("whatsapp") or "").strip()
+                    if not cpf or not chat:
+                        continue
+                    links.append({
+                        "id": str(lk.get("ID") or lk.get("id") or lk.get("id_cliente") or "").strip(),
+                        "chat_id": chat,
+                        "cpf": cpf,
+                        "nome": lk.get("nome") or lk.get("name") or ""
+                    })
+        except Exception as e:
+            logger.warning(f"[ADMIN] _auth_list_links falhou: {e}")
+
+    # === 3) Fallback por excel_services (quando existir) ===
+    if not links:
+        rows = []
+        try:
+            if excel:
+                # tenta readers dedicados
+                for cand in ("_read_rows_clientes", "_read_rows_clients"):
+                    fn = getattr(excel, cand, None)
+                    if callable(fn):
+                        rows = fn() or []
+                        if rows:
+                            break
+                # fallback: sheet=Clientes ou geral
+                if not rows and hasattr(excel, "_read_rows"):
+                    try:
+                        rows = excel._read_rows(sheet="Clientes")
+                    except TypeError:
+                        rows = excel._read_rows()
+        except Exception as e:
+            logger.warning(f"[ADMIN] erro lendo Clientes via excel: {e}")
+            rows = []
+
+        for r in rows or []:
+            cpf = _digits(r.get("CPF") or r.get("Cpf") or "")
+            chat = (r.get("ChatId") or r.get("ChatID") or r.get("chat_id") or r.get("WhatsApp") or "").strip()
+            if not cpf or not chat:
+                continue
+            links.append({
+                "id": str(r.get("ID") or "").strip(),
+                "chat_id": chat,
+                "cpf": cpf,
+                "nome": str(r.get("Nome") or r.get("ClienteNome") or "").strip()
+            })
+
+    # Ordena por nome, depois por ID
+    links = sorted(links, key=lambda x: ((x.get("nome") or "").lower(), str(x.get("id") or "")))
+    total = len(links)
+    if total == 0:
+        return send(admin_id, "📇 Não há vínculos de login registrados.")
+
+    # Paginação
+    limit = max(1, min(int(limit or 20), 200))
+    page = max(1, int(page or 1))
+    start = (page - 1) * limit
+    end = start + limit
+    slice_ = links[start:end]
+
+    # Monta blocos
+    blocos = []
+    sep = "--------------"
+    for i, lk in enumerate(slice_, start=start + 1):
+        # ID de exibição: usa coluna ID; se vazia, usa o índice i como fallback visual
+        disp_id = lk.get("id") or str(i)
+        nome = (lk.get("nome") or "(sem nome)")
+        cpf = (lk.get("cpf") or "-")
+        cpf_fmt = f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}" if len(cpf) == 11 else (cpf or "-")
+
+        blocos.append(
+            f"{sep}\n"
+            f"ℹ️: {disp_id}\n"
+            f"👤: {nome}\n"
+            f"🪪: {cpf_fmt}\n"
+            f"{sep}"
+        )
+
+    pages = (total + limit - 1) // limit
+    header = "🔐 *Logins (vínculos)*"
+    footer = (
+        f"\n\nTotal: {total} • Página {page}/{pages}\n"
+        "Ajuste a quantidade com: `/logins <qtde>` (ex.: `/logins 50`)."
+    )
+    send(admin_id, header + "\n" + "\n".join(blocos) + footer)
+
+
+
+# =============================================================================
+# AUTH: telas e handlers
+# =============================================================================
+
+# =============================================================================
+# Roteamento final e export
+# =============================================================================

@@ -1,0 +1,5 @@
+﻿Pagamento confirmado ✅
+Seu horário está CONFIRMADO para {{data}} às {{hora}}.
+
+💈 Te esperamos na barbearia!
+Qualquer dúvida, é só chamar.

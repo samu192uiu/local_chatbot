@@ -1,2 +1,0 @@
-﻿Pagamento confirmado ✅
-Seu agendamento está CONFIRMADO para {{data}} às {{hora}}.

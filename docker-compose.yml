@@ -2,48 +2,56 @@ services:
   waha:
     image: devlikeapro/waha:latest
     container_name: wpp_bot_waha
-    restart: always
+    restart: unless-stopped
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     environment:
-      WHATSAPP_START_SESSION: "default"
-      WAHA_WEBHOOK_URL: "http://api:5000/chatbot/webhook/"
-      # ====== credenciais DEV ======
-      WAHA_API_KEY: "waha_dev_key_123"
-      WAHA_DASHBOARD_PASSWORD: "wahaDashboard!123"
-      WHATSAPP_SWAGGER_PASSWORD: "wahaDocs!123"
+      TZ: America/Sao_Paulo
+      WHATSAPP_START_SESSION: default
+      WAHA_WEBHOOK_URL: http://api:5000/chatbot/webhook/
+      WHATSAPP_SWAGGER_ENABLED: "true"
     volumes:
-      - waha_data:/app/sessions                         # persiste sessão do WhatsApp
+      - waha_data:/app/sessions
 
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
     container_name: wpp_bot_api
-    ports:
-      - "5000:5000"
-    volumes:
-      - .:/app                  # código (hot-reload)
-      - agdata:/app/data        # DADOS (a planilha vai aqui)
-      # Se quiser gerenciar admins por arquivo, descomente a linha abaixo e crie ./config/admins.json
-      # - ./config:/app/config   # opcional: admins.json => {"admins":["5511912345678@c.us"]}
+    restart: unless-stopped
     depends_on:
       - waha
-    restart: always
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
     environment:
+      TZ: America/Sao_Paulo
       FLASK_APP: app.py
       FLASK_DEBUG: "True"
-      WAHA_API_URL: "http://waha:3000"
-      WAHA_SESSION: "default"
-      AGENDAMENTOS_XLSX: "/app/data/agendamentos.xlsx"
-      # ====== MESMA API KEY do serviço 'waha' ======
-      WAHA_API_KEY: "waha_dev_key_123"
 
-      # IDs de administrador (compatibilidade com diferentes variáveis do código)
-      ADMIN_JID: "5511917281651@c.us"
-      ADMIN_CHAT_ID: "5511917281651@c.us"
-      ADMIN_CHAT_IDS: "5511917281651@c.us"
+      # Integração WAHA
+      WAHA_API_URL: http://waha:3000
+      WAHA_SESSION: default
 
+      # Barbearia - Arquivos
+      CLIENTES_XLSX: /app/data/clientes.xlsx
+      AGENDAMENTOS_XLSX: /app/data/agendamentos.xlsx
+      SERVICOS_JSON: /app/config/servicos.json
+      PIN_SALT: barbearia_veinho_corts_2025
+
+      # Admin Barbearia
+      ADMIN_JID: 5511917281651@c.us
+
+      # Python settings
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - .:/app
+      - agdata:/app/data
+      - ./config:/app/config
     command: ["flask", "run", "--host=0.0.0.0", "--port=5000"]
 
 volumes:

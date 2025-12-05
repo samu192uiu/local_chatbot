@@ -1,19 +1,24 @@
 import requests
+import os
 
 
 class Waha:
 
-    def __init__(self):
-        self.__api_url = 'http://waha:3000'
-
     def __init__(self, api_url=None, base_url=None, url=None):
-        self.base_url = api_url or base_url or url or os.getenv("WAHA_API_URL", "http://waha:3000")
+        self.__api_url = api_url or base_url or url or os.getenv("WAHA_API_URL", "http://waha:3000")
+        self.base_url = self.__api_url
+        self.__api_key = os.getenv("WAHA_API_KEY", "")
 
-    def send_message(self, chat_id, message):
-        url = f'{self.__api_url}/api/sendText'
+    def _get_headers(self):
         headers = {
             'Content-Type': 'application/json',
         }
+        if self.__api_key:
+            headers['X-Api-Key'] = self.__api_key
+        return headers
+
+    def send_message(self, chat_id, message):
+        url = f'{self.__api_url}/api/sendText'
         payload = {
             'session': 'default',
             'chatId': chat_id,
@@ -22,25 +27,19 @@ class Waha:
         requests.post(
             url=url,
             json=payload,
-            headers=headers,
+            headers=self._get_headers(),
         )
 
     def get_history_messages(self, chat_id, limit):
         url = f'{self.__api_url}/api/default/chats/{chat_id}/messages?limit={limit}&downloadMedia=false'
-        headers = {
-            'Content-Type': 'application/json',
-        }
         response = requests.get(
             url=url,
-            headers=headers,
+            headers=self._get_headers(),
         )
         return response.json()
 
     def start_typing(self, chat_id):
         url = f'{self.__api_url}/api/startTyping'
-        headers = {
-            'Content-Type': 'application/json',
-        }
         payload = {
             'session': 'default',
             'chatId': chat_id,
@@ -48,14 +47,11 @@ class Waha:
         requests.post(
             url=url,
             json=payload,
-            headers=headers,
+            headers=self._get_headers(),
         )
 
     def stop_typing(self, chat_id):
         url = f'{self.__api_url}/api/stopTyping'
-        headers = {
-            'Content-Type': 'application/json',
-        }
         payload = {
             'session': 'default',
             'chatId': chat_id,
@@ -63,5 +59,5 @@ class Waha:
         requests.post(
             url=url,
             json=payload,
-            headers=headers,
+            headers=self._get_headers(),
         )

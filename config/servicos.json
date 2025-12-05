@@ -1,10 +1,12 @@
 {
 "moeda": "BRL",
 "servicos": [
-    { "id": "osteopatia",   "nome": "Osteopatia",   "preco": 300.0, "unidade": "sessão", "agendavel": true },
-    { "id": "fisioterapia", "nome": "Fisioterapia", "preco": 200.0, "unidade": "sessão", "agendavel": true },
-    { "id": "acupuntura",   "nome": "Acupuntura",   "preco": 250.0, "unidade": "sessão", "agendavel": true },
-    { "id": "pilates",      "nome": "Pilates",      "preco": null,  "unidade": "aula",   "agendavel": true,
-    "observacao": "Preço definido na clínica ou por plano" }
+    { "id": "corte",        "nome": "Corte de Cabelo",     "preco": 50.0,  "unidade": "serviço", "agendavel": true },
+    { "id": "barba",        "nome": "Barba",               "preco": 40.0,  "unidade": "serviço", "agendavel": true },
+    { "id": "combo",        "nome": "Combo (Corte + Barba)", "preco": 80.0,  "unidade": "serviço", "agendavel": true },
+    { "id": "sobrancelha",  "nome": "Sobrancelha",         "preco": 20.0,  "unidade": "serviço", "agendavel": true },
+    { "id": "hidratacao",   "nome": "Hidratação Capilar",  "preco": 60.0,  "unidade": "serviço", "agendavel": true },
+    { "id": "luzes",        "nome": "Luzes/Coloração",     "preco": 120.0, "unidade": "serviço", "agendavel": true,
+    "observacao": "Preço pode variar conforme o tamanho do cabelo" }
 ]
 }

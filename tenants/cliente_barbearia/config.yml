@@ -1,0 +1,12 @@
+﻿# tenants/cliente_barbearia/config.yml
+name: "Barbearia Veinho Corts"
+timezone: "America/Sao_Paulo"
+price: 50.00
+pix_key: "barbearia@example.com"
+agenda_backend: "excel"                  # excel | sqlite (futuro)
+agenda_file: "data/cliente_barbearia/agendamentos.xlsx"
+accept_payment_methods:
+  - PIX
+  - CARTAO
+messages:
+  currency: "BRL"

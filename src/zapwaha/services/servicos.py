@@ -8,11 +8,13 @@ from typing import Any, Dict, List, Optional
 _DEFAULT = {
     "moeda": "BRL",
     "servicos": [
-        {"id": "osteopatia",   "nome": "Osteopatia",   "preco": 300.0, "unidade": "sessão", "agendavel": True},
-        {"id": "fisioterapia", "nome": "Fisioterapia", "preco": 200.0, "unidade": "sessão", "agendavel": True},
-        {"id": "acupuntura",   "nome": "Acupuntura",   "preco": 250.0, "unidade": "sessão", "agendavel": True},
-        {"id": "pilates",      "nome": "Pilates",      "preco": None,  "unidade": "aula",   "agendavel": True,
-         "observacao": "Preço definido na clínica ou por plano"}
+        {"id": "corte",        "nome": "Corte de Cabelo",     "preco": 50.0,  "unidade": "serviço", "agendavel": True},
+        {"id": "barba",        "nome": "Barba",               "preco": 40.0,  "unidade": "serviço", "agendavel": True},
+        {"id": "combo",        "nome": "Combo (Corte + Barba)", "preco": 80.0,  "unidade": "serviço", "agendavel": True},
+        {"id": "sobrancelha",  "nome": "Sobrancelha",         "preco": 20.0,  "unidade": "serviço", "agendavel": True},
+        {"id": "hidratacao",   "nome": "Hidratação Capilar",  "preco": 60.0,  "unidade": "serviço", "agendavel": True},
+        {"id": "luzes",        "nome": "Luzes/Coloração",     "preco": 120.0, "unidade": "serviço", "agendavel": True,
+         "observacao": "Preço pode variar conforme o tamanho do cabelo"}
     ]
 }
 
@@ -71,24 +73,24 @@ def _fmt_brl(v: Optional[float]) -> str:
 def format_menu() -> str:
     """
     Retorna um menu amigável para WhatsApp:
-    1) Osteopatia — R$ 300,00 por sessão
+    1) Corte de Cabelo — R$ 50,00 por serviço
     ...
     """
     itens = []
     for i, s in enumerate(lista_servicos(), 1):
         nome = s.get("nome", "Serviço")
         preco = _fmt_brl(s.get("preco"))
-        un = s.get("unidade") or "sessão"
+        un = s.get("unidade") or "serviço"
         if s.get("preco") is None:
             linha = f"{i}) {nome} — {preco}"
         else:
             linha = f"{i}) {nome} — {preco} por {un}"
         itens.append(linha)
     rodape = "Responda com o número do serviço."
-    return "🧾 *Serviços*\n" + "\n".join(itens) + "\n\n" + rodape
+    return "💈 *Serviços da Barbearia*\n" + "\n".join(itens) + "\n\n" + rodape
 
 def map_choice_to_id(choice: str) -> Optional[str]:
-    """'1' → 'osteopatia', etc."""
+    """'1' → 'corte', etc."""
     if not choice or not choice.isdigit():
         return None
     idx = int(choice) - 1

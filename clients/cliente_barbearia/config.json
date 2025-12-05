@@ -1,0 +1,7 @@
+﻿{
+  "nome": "Barbearia Veinho Corts",
+  "preco": 50.0,
+  "pix_key": "barbearia@example.com",
+  "timezone": "America/Sao_Paulo",
+  "agenda_arquivo": "data/cliente_barbearia/agendamentos.xlsx"
+}

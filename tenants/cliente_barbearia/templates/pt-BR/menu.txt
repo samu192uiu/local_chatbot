@@ -1,0 +1,6 @@
+﻿Olá! Sou o assistente da {{tenant_name}}. ✂️💈
+Escolha uma opção:
+1) Agendar corte/serviço
+2) Serviços e valores
+3) Dúvidas frequentes
+4) Falar com atendente

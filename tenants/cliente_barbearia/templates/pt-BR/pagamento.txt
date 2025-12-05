@@ -1,0 +1,6 @@
+﻿💰 Valor: R$ {{preco}}
+💳 Forma de pagamento: {{metodo}}
+
+Chave PIX: {{pix_key}}
+
+Após realizar o pagamento, responda: *paguei*
