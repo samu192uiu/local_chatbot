@@ -1,0 +1,218 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# 🚀 DEPLOY RÁPIDO - BOT BARBEARIA NA HOSTINGER VPS
+# ═══════════════════════════════════════════════════════════════════════════
+
+## INFORMAÇÕES DA SUA VPS:
+# Hostname: srv1017248.hstgr.cloud
+# IP: 212.85.21.122
+# OS: Ubuntu 24.04 with Docker
+# SSH User: root
+# RAM: 4 GB
+# Disco: 50 GB
+# Localização: Brazil - São Paulo
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## PASSO 1: CONECTAR NA VPS VIA SSH
+## ═══════════════════════════════════════════════════════════════════════════
+
+No PowerShell ou CMD do Windows, execute:
+
+ssh root@212.85.21.122
+
+# Digite a senha quando solicitado
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## PASSO 2: EXECUTAR SCRIPT DE DEPLOY AUTOMÁTICO
+## ═══════════════════════════════════════════════════════════════════════════
+
+Depois de conectado na VPS, copie e cole TUDO de uma vez:
+
+curl -fsSL https://raw.githubusercontent.com/samu192uiu/local_chatbot/main/deploy-hostinger.sh -o deploy.sh && bash deploy.sh
+
+
+## OU, se preferir fazer passo a passo manualmente:
+
+# 2.1 - Atualizar sistema
+apt update && apt upgrade -y
+
+# 2.2 - Instalar Docker
+curl -fsSL https://get.docker.com | sh
+
+# 2.3 - Instalar Docker Compose
+curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+
+# 2.4 - Instalar Git
+apt install git -y
+
+# 2.5 - Clonar repositório
+mkdir -p /opt/barbearia-bot
+cd /opt/barbearia-bot
+git clone https://github.com/samu192uiu/local_chatbot.git .
+
+# 2.6 - Iniciar containers
+docker-compose up -d --build
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## PASSO 3: CONECTAR WHATSAPP
+## ═══════════════════════════════════════════════════════════════════════════
+
+No seu navegador, acesse:
+
+http://212.85.21.122:3000
+
+Login:
+- Usuário: admin
+- Senha: 1234
+
+1. Clique em "Sessions" → "+ Add Session"
+2. Nome: default
+3. Clique em "Start"
+4. Escaneie o QR Code com WhatsApp
+5. Aguarde status: WORKING ✓
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## COMANDOS ÚTEIS (Executar na VPS via SSH)
+## ═══════════════════════════════════════════════════════════════════════════
+
+# Ver logs em tempo real (Ctrl+C para sair)
+docker-compose logs -f
+
+# Ver apenas logs do bot
+docker logs -f wpp_bot_api
+
+# Ver apenas logs do WAHA
+docker logs -f wpp_bot_waha
+
+# Ver status dos containers
+docker ps
+
+# Reiniciar tudo
+docker-compose restart
+
+# Parar tudo
+docker-compose down
+
+# Iniciar novamente
+docker-compose up -d
+
+# Atualizar código do GitHub
+cd /opt/barbearia-bot
+git pull origin main
+docker-compose up -d --build
+
+# Ver uso de recursos (CPU/RAM)
+docker stats
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## FIREWALL (Opcional - Se portas não estiverem acessíveis)
+## ═══════════════════════════════════════════════════════════════════════════
+
+# Instalar UFW
+apt install ufw -y
+
+# Permitir SSH (IMPORTANTE!)
+ufw allow 22/tcp
+
+# Permitir portas do bot
+ufw allow 3000/tcp
+ufw allow 5000/tcp
+
+# Ativar firewall
+ufw enable
+
+# Ver status
+ufw status
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## SEGURANÇA PÓS-DEPLOY
+## ═══════════════════════════════════════════════════════════════════════════
+
+# 1. Alterar senhas no arquivo .env
+nano /opt/barbearia-bot/.env
+
+# Altere estas linhas:
+# WAHA_DASHBOARD_PASSWORD=SUA_SENHA_FORTE_AQUI
+# WHATSAPP_SWAGGER_PASSWORD=OUTRA_SENHA_FORTE_AQUI
+
+# Salvar: Ctrl+O → Enter → Ctrl+X
+
+# 2. Reiniciar containers após alterar senhas
+docker-compose restart
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## TROUBLESHOOTING
+## ═══════════════════════════════════════════════════════════════════════════
+
+# Container não inicia?
+docker-compose logs wpp_bot_api
+docker-compose logs wpp_bot_waha
+
+# Porta já em uso?
+netstat -tulpn | grep 3000
+netstat -tulpn | grep 5000
+
+# Sem espaço em disco?
+df -h
+docker system prune -a
+
+# WhatsApp desconectou?
+docker-compose restart wpp_bot_waha
+
+# Resetar tudo do zero (⚠️ APAGA DADOS!)
+cd /opt/barbearia-bot
+docker-compose down -v
+docker-compose up -d --build
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## BACKUP
+## ═══════════════════════════════════════════════════════════════════════════
+
+# Backup manual dos dados
+cd /opt/barbearia-bot
+docker run --rm -v barbearia-bot_agdata:/data -v $(pwd):/backup ubuntu tar czf /backup/backup-$(date +%Y%m%d).tar.gz /data
+
+# Backup da sessão do WhatsApp
+docker run --rm -v barbearia-bot_waha_data:/data -v $(pwd):/backup ubuntu tar czf /backup/backup-waha-$(date +%Y%m%d).tar.gz /data
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## ✅ CHECKLIST FINAL
+## ═══════════════════════════════════════════════════════════════════════════
+
+☐ Conectado via SSH na VPS (212.85.21.122)
+☐ Docker instalado e rodando
+☐ Repositório clonado em /opt/barbearia-bot
+☐ Arquivo .env existe e está configurado
+☐ Containers iniciados: docker ps mostra 2 containers
+☐ Dashboard acessível em http://212.85.21.122:3000
+☐ WhatsApp conectado (status WORKING)
+☐ Bot respondendo mensagens de teste
+☐ Senhas padrão alteradas (admin/1234)
+☐ Firewall configurado (opcional)
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## 🆘 SUPORTE
+## ═══════════════════════════════════════════════════════════════════════════
+
+Problemas? Verifique:
+1. Logs: docker-compose logs
+2. Status: docker ps
+3. Conectividade: ping 212.85.21.122
+4. Portas abertas: telnet 212.85.21.122 3000
+
+Documentação completa: DEPLOY_HOSTINGER.md
+
+
+═══════════════════════════════════════════════════════════════════════════
+🎉 Seu bot estará no ar 24/7 após seguir estes passos!
+═══════════════════════════════════════════════════════════════════════════
