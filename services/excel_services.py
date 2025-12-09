@@ -5,6 +5,9 @@ import threading
 from datetime import datetime, timedelta
 from typing import Iterable, Dict, List, Optional, Tuple, Any
 from openpyxl import Workbook, load_workbook
+import logging
+
+logger = logging.getLogger("ZapWaha")
 
 # =========================================================
 # Config e Lock Global
@@ -902,3 +905,42 @@ def obter_agendamentos_do_dia(data_str: str) -> List[Dict[str, Any]]:
     """
     rows = _read_rows()
     return [r for r in rows if r.get("Data") == data_str]
+
+
+def atualizar_pagamento_id(chave: str, payment_id: str, payment_status: str = "pending") -> bool:
+    """
+    Atualiza o PagamentoID e PagamentoStatus de um agendamento.
+    
+    Args:
+        chave: Chave do agendamento
+        payment_id: ID do pagamento no Mercado Pago
+        payment_status: Status do pagamento (pending, approved, rejected)
+    
+    Returns:
+        True se atualizado com sucesso
+    """
+    try:
+        wb, ws = _open_ws()
+        hm = _get_header_map(ws)
+        
+        c_chave = hm.get("Chave")
+        c_pag_id = hm.get("PagamentoID")
+        c_pag_status = hm.get("PagamentoStatus")
+        
+        if not all([c_chave, c_pag_id, c_pag_status]):
+            return False
+        
+        for r in range(2, ws.max_row + 1):
+            row_chave = str(ws.cell(row=r, column=c_chave).value or "").strip()
+            
+            if row_chave == chave:
+                ws.cell(row=r, column=c_pag_id, value=str(payment_id))
+                ws.cell(row=r, column=c_pag_status, value=payment_status)
+                wb.save(FILE_PATH)
+                return True
+        
+        return False
+    
+    except Exception as e:
+        logger.error(f"Erro ao atualizar PagamentoID: {e}")
+        return False

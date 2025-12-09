@@ -617,3 +617,131 @@ def debug_clients_delete_by_cpf():
         return jsonify({"ok": True, "deleted_row": row_to_delete}), 200
     except Exception as e:
         return jsonify({"ok": False, "file": path, "error": str(e)}), 500
+
+# --------------------------------------------------------------------------------------
+# Webhook Mercado Pago
+# --------------------------------------------------------------------------------------
+@web_bp.route("/webhooks/mercadopago", methods=["POST", "GET"])
+def mercadopago_webhook():
+    """
+    Recebe notificações de pagamento do Mercado Pago.
+    Quando um pagamento é aprovado, confirma a reserva automaticamente.
+    """
+    try:
+        # Mercado Pago envia dados como query params no GET
+        if request.method == "GET":
+            payment_id = request.args.get("data.id") or request.args.get("id")
+            topic = request.args.get("topic") or request.args.get("type")
+        else:
+            data = request.json or {}
+            payment_id = data.get("data", {}).get("id") or data.get("id")
+            topic = data.get("topic") or data.get("type")
+        
+        logger.info(f"[MERCADOPAGO WEBHOOK] Recebido - Topic: {topic}, Payment ID: {payment_id}")
+        
+        if not payment_id:
+            logger.warning("[MERCADOPAGO WEBHOOK] Notificação sem payment_id")
+            return jsonify({"status": "ignored"}), 200
+        
+        # Importar serviços
+        try:
+            from services import mercadopago_service as mp
+            from services import excel_services as excel
+        except ImportError as e:
+            logger.error(f"[MERCADOPAGO WEBHOOK] Erro ao importar serviços: {e}")
+            return jsonify({"status": "error", "message": "Serviços não disponíveis"}), 500
+        
+        # Verificar status do pagamento
+        resultado = mp.verificar_status_pagamento(str(payment_id))
+        
+        if not resultado.get("sucesso"):
+            logger.warning(f"[MERCADOPAGO WEBHOOK] Erro ao verificar pagamento: {resultado.get('mensagem')}")
+            return jsonify({"status": "error"}), 200
+        
+        status = resultado.get("status")
+        logger.info(f"[MERCADOPAGO WEBHOOK] Status do pagamento {payment_id}: {status}")
+        
+        # Se pagamento foi aprovado
+        if status == "approved":
+            # Buscar agendamento pelo payment_id
+            try:
+                agendamentos = excel._read_rows()
+                
+                for ag in agendamentos:
+                    if str(ag.get("PagamentoID", "")).strip() == str(payment_id):
+                        chave = ag.get("Chave")
+                        
+                        if chave:
+                            # Confirmar reserva
+                            sucesso = excel.confirmar_reserva(chave)
+                            
+                            if sucesso:
+                                logger.info(f"[MERCADOPAGO WEBHOOK] Agendamento {chave} confirmado automaticamente!")
+                                
+                                # Atualizar status do pagamento no Excel
+                                try:
+                                    wb, ws = excel._open_ws()
+                                    hm = excel._get_header_map(ws)
+                                    c_chave = hm.get("Chave")
+                                    c_pag_status = hm.get("PagamentoStatus")
+                                    
+                                    if c_chave and c_pag_status:
+                                        for r in range(2, ws.max_row + 1):
+                                            if str(ws.cell(row=r, column=c_chave).value or "").strip() == chave:
+                                                ws.cell(row=r, column=c_pag_status, value="approved")
+                                                wb.save(excel.FILE_PATH)
+                                                break
+                                except Exception as e:
+                                    logger.error(f"[MERCADOPAGO WEBHOOK] Erro ao atualizar PagamentoStatus: {e}")
+                                
+                                # Enviar mensagem de confirmação ao cliente
+                                chat_id = ag.get("ChatId")
+                                data_ag = ag.get("Data")
+                                hora_ag = ag.get("Hora")
+                                
+                                if chat_id:
+                                    mensagem = f"""✅ *PAGAMENTO CONFIRMADO!*
+
+Seu agendamento está confirmado:
+
+📅 *Data:* {data_ag}
+🕐 *Horário:* {hora_ag}
+
+Nos vemos em breve! 🎉
+
+💡 Para ver detalhes, digite *menu*"""
+                                    
+                                    try:
+                                        send(chat_id, mensagem)
+                                    except Exception as e:
+                                        logger.error(f"[MERCADOPAGO WEBHOOK] Erro ao enviar confirmação: {e}")
+                            
+                            break
+                
+            except Exception as e:
+                logger.exception(f"[MERCADOPAGO WEBHOOK] Erro ao processar pagamento aprovado: {e}")
+        
+        # Se pagamento foi rejeitado ou expirou
+        elif status in ["rejected", "cancelled", "refunded"]:
+            try:
+                agendamentos = excel._read_rows()
+                
+                for ag in agendamentos:
+                    if str(ag.get("PagamentoID", "")).strip() == str(payment_id):
+                        chave = ag.get("Chave")
+                        
+                        if chave:
+                            # Cancelar reserva
+                            excel.cancelar_reserva(chave)
+                            logger.info(f"[MERCADOPAGO WEBHOOK] Reserva {chave} cancelada (pagamento {status})")
+                        
+                        break
+            
+            except Exception as e:
+                logger.exception(f"[MERCADOPAGO WEBHOOK] Erro ao processar pagamento cancelado: {e}")
+        
+        return jsonify({"status": "processed"}), 200
+    
+    except Exception as e:
+        logger.exception(f"[MERCADOPAGO WEBHOOK] Erro geral: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500

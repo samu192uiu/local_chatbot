@@ -4,7 +4,7 @@
     { 
         "id": "cabelo_sobrancelha",
         "nome": "Cabelo + Sombrancelha",
-        "preco": 45.0,
+        "preco": 0.01,
         "duracao_minutos": 40,
         "unidade": "serviço",
         "agendavel": true
@@ -12,7 +12,7 @@
     { 
         "id": "barba",
         "nome": "Barba",
-        "preco": 15.0,
+        "preco": 0.01,
         "duracao_minutos": 20,
         "unidade": "serviço",
         "agendavel": true
@@ -20,7 +20,7 @@
     { 
         "id": "sobrancelha",
         "nome": "Sombrancelha",
-        "preco": 10.0,
+        "preco": 0.01,
         "duracao_minutos": 10,
         "unidade": "serviço",
         "agendavel": true
@@ -28,7 +28,7 @@
     { 
         "id": "platinado",
         "nome": "Platinado",
-        "preco": 170.0,
+        "preco": 0.01,
         "duracao_minutos": 120,
         "unidade": "serviço",
         "agendavel": true,
