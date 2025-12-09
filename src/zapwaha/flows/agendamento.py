@@ -563,17 +563,22 @@ def _pre_reservar(send, chat_id: str, data_str: str, hora_str: str) -> bool:
         servico_duracao = 30  # Fallback
 
     try:
-        chave = excel.reservar_slot_temporario(
+        resultado = excel.reservar_slot_temporario(
             data_str=data_str,
             hora_str=hora_str,
             chat_id=chat_id,
             cliente_nome=nome,
-            data_nasc=nasc,
-            cpf=cpf,
+            cliente_id=None,
             servico_id=servico_id,
             servico_duracao=servico_duracao
         )
         
+        if not resultado.get("sucesso"):
+            # Falhou - horário ocupado
+            mensagem_erro = resultado.get("mensagem", "Horário indisponível")
+            raise ValueError(mensagem_erro)
+        
+        chave = resultado.get("chave")
         if not chave:
             chave = _make_key(data_str, hora_str, chat_id)
         
@@ -586,7 +591,7 @@ def _pre_reservar(send, chat_id: str, data_str: str, hora_str: str) -> bool:
         logger.info(f"[FLOW] Horário indisponível: {ve}")
         
         # Tentar sugerir próximo horário disponível
-        if slots_dinamicos:
+        if slots_dinamicos and excel:
             try:
                 agendamentos = excel.obter_agendamentos_do_dia(data_str)
                 proximo = slots_dinamicos.obter_proximo_slot_disponivel(
