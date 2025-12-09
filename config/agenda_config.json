@@ -1,0 +1,90 @@
+{
+  "horario_funcionamento": {
+    "segunda": {
+      "ativo": true,
+      "inicio": "08:00",
+      "fim": "15:00",
+      "intervalos": [
+        {
+          "inicio": "12:00",
+          "fim": "13:00",
+          "tipo": "almoco"
+        }
+      ]
+    },
+    "terca": {
+      "ativo": true,
+      "inicio": "08:00",
+      "fim": "18:00",
+      "intervalos": [
+        {
+          "inicio": "12:00",
+          "fim": "13:00",
+          "tipo": "almoco"
+        }
+      ]
+    },
+    "quarta": {
+      "ativo": true,
+      "inicio": "08:00",
+      "fim": "18:00",
+      "intervalos": [
+        {
+          "inicio": "12:00",
+          "fim": "13:00",
+          "tipo": "almoco"
+        }
+      ]
+    },
+    "quinta": {
+      "ativo": true,
+      "inicio": "08:00",
+      "fim": "18:00",
+      "intervalos": [
+        {
+          "inicio": "12:00",
+          "fim": "13:00",
+          "tipo": "almoco"
+        }
+      ]
+    },
+    "sexta": {
+      "ativo": true,
+      "inicio": "07:00",
+      "fim": "14:00",
+      "intervalos": [
+        {
+          "inicio": "12:00",
+          "fim": "13:00",
+          "tipo": "almoco"
+        }
+      ]
+    },
+    "sabado": {
+      "ativo": true,
+      "inicio": "08:00",
+      "fim": "14:00",
+      "intervalos": []
+    },
+    "domingo": {
+      "ativo": false,
+      "inicio": "08:00",
+      "fim": "18:00",
+      "intervalos": []
+    }
+  },
+  "configuracoes_gerais": {
+    "duracao_slot_minutos": 60,
+    "buffer_entre_atendimentos": 0,
+    "permitir_agendamento_mesmo_dia": true,
+    "horario_limite_mesmo_dia": "18:00",
+    "dias_antecedencia_maximo": 30
+  },
+  "bloqueios_pontuais": [
+    {
+      "data": "09/12/2025",
+      "motivo": "Bloqueado pelo admin"
+    }
+  ],
+  "slots_personalizados": {}
+}

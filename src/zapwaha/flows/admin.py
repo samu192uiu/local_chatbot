@@ -1,7 +1,7 @@
 # src/zapwaha/flows/admin.py
 from __future__ import annotations
 import os, json, re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional, Dict, Any, List
 import logging
 
@@ -212,19 +212,52 @@ def queue_contact_request(send, client_chat_id: str, nome: Optional[str], cpf: O
 # =========================
 S_ADM_MENU = "ADM_MENU"
 S_ADM_WAIT_DATE = "ADM_WAIT_DATE"
+S_ADM_AGENDA_MENU = "ADM_AGENDA_MENU"
+S_ADM_AGENDA_BLOQUEAR = "ADM_AGENDA_BLOQUEAR"
+S_ADM_AGENDA_DESBLOQUEAR = "ADM_AGENDA_DESBLOQUEAR"
+S_ADM_AGENDA_AJUSTAR_DIA = "ADM_AGENDA_AJUSTAR_DIA"
+S_ADM_AGENDA_AJUSTAR_HORARIOS = "ADM_AGENDA_AJUSTAR_HORARIOS"
+
+# Importar módulo de agenda dinâmica
+try:
+    from services import agenda_dinamica as ag
+except ImportError:
+    ag = None
 
 def _send_admin_menu(send, chat_id: str):
-    send(chat_id,
-        "🛠️ *Painel do Admin*\n\n"
-        "1) 📅 Ver agenda de *HOJE*\n"
-        "2) 📆 Ver agenda por *data*\n"
-        "3) 🧑‍💼 *Contatos pendentes* (pedidos de humano)\n"
-        "4) 🔌 *Encerrar chat humano* atual\n"
-        "9) ↩️ Sair (voltar ao menu do cliente)\n"
-        + _nav_footer(["Dica: */aceitar <TICKET>* para aceitar direto"]))
+    """Envia menu principal do admin com visual melhorado."""
+    top = "╔═══════════════════════════════╗"
+    titulo = "║  🛠️  *PAINEL ADMIN - BARBEARIA*  ║"
+    sep = "╠═══════════════════════════════╣"
+    bot = "╚═══════════════════════════════╝"
+    
+    opcoes = [
+        "║                               ║",
+        "║  1️⃣  📅 Agenda de HOJE        ║",
+        "║  2️⃣  📆 Agenda por data       ║",
+        "║  3️⃣  👤 Assumir cliente       ║",
+        "║  4️⃣  📞 Chamados abertos      ║",
+        "║  5️⃣  ⚙️  Configurar Agenda    ║",
+        "║  6️⃣  📊 Logins ativos         ║",
+        "║                               ║",
+        "║  9️⃣  ↩️  Sair do painel       ║",
+        "║                               ║"
+    ]
+    
+    menu = "\n".join([top, titulo, sep] + opcoes + [bot])
+    
+    rodape = (
+        "\n💡 *Comandos rápidos:*\n"
+        "• `/aceitar <TICKET>` - aceitar atendimento\n"
+        "• `/encerrar` - encerrar chat humano\n"
+        "• `menu` - voltar a este painel"
+    )
+    
+    send(chat_id, menu + rodape)
     state_manager.set_state(chat_id, S_ADM_MENU)
 
 def _format_agenda_do_dia(data_str: str) -> str:
+    """Formata agenda do dia com visual melhorado."""
     rows = []
     try:
         if excel and hasattr(excel, "listar_agendamentos_por_data"):
@@ -235,11 +268,7 @@ def _format_agenda_do_dia(data_str: str) -> str:
         logger.warning(f"[ADMIN] Falha ao ler agenda: {e}")
         rows = []
 
-    if not rows:
-        return _box_loose(f"🗓️ Agenda — {data_str}", ["(sem agendamentos)"], " ")
-
-    linhas = []
-    # ordena por hora
+    # Ordenar por hora
     def _hkey(r):
         try:
             return r.get("Hora") or ""
@@ -247,12 +276,40 @@ def _format_agenda_do_dia(data_str: str) -> str:
             return ""
     rows = sorted(rows, key=_hkey)
 
+    # Cabeçalho
+    top = "╔═══════════════════════════════╗"
+    titulo = f"║  📅  AGENDA — {data_str}  ║"
+    sep = "╠═══════════════════════════════╣"
+    bot = "╚═══════════════════════════════╝"
+    
+    if not rows:
+        conteudo = ["║                               ║",
+                    "║  (sem agendamentos)           ║",
+                    "║                               ║"]
+        return "\n".join([top, titulo, sep] + conteudo + [bot])
+
+    linhas = []
     for r in rows:
         h = r.get("Hora") or "--:--"
         nm = r.get("ClienteNome") or "(s/ nome)"
         st = r.get("Status") or "-"
-        linhas.append(f"{h} — {nm} ({st})")
-    return _box_loose(f"🗓️ Agenda — {data_str}", linhas, " ")
+        
+        # Emoji baseado no status
+        if "Confirmado" in st:
+            emoji = "✅"
+        elif "Pendente" in st:
+            emoji = "⏳"
+        elif "Cancelado" in st:
+            emoji = "❌"
+        else:
+            emoji = "📌"
+        
+        linhas.append(f"║  {emoji} {h} — {nm[:15]}")
+        linhas.append(f"║     Status: {st[:20]}")
+    
+    linhas.append("║                               ║")
+    
+    return "\n".join([top, titulo, sep] + linhas + [bot])
 
 
 def _listar_pendentes_txt() -> str:
@@ -277,20 +334,57 @@ def _handle_admin_option(send, chat_id: str, t: str):
         return state_manager.set_state(chat_id, S_ADM_WAIT_DATE)
 
     if t == "3":
+        # Assumir próximo cliente (lista pendentes)
         send(chat_id, _listar_pendentes_txt())
         return _send_admin_menu(send, chat_id)
 
     if t == "4":
-        if ProxyHub.admin_has_chat(chat_id):
-            client = ProxyHub.end_by_admin(chat_id)
-            if client:
-                send(chat_id, "🔌 Chat humano encerrado. Mensagens voltam ao fluxo normal.")
-                try:
-                    send(client, "🔌 O atendente encerrou o chat humano. Você voltou ao atendimento automático.")
-                except Exception:
-                    pass
+        # Ver chamados abertos (fila de contatos)
+        pend = ContactQueue.list()
+        if not pend:
+            msg = "📞 *Chamados Abertos*\n\n(Nenhum chamado no momento)"
         else:
-            send(chat_id, "Não há chat humano ativo para encerrar.")
+            linhas = ["📞 *Chamados Abertos*\n"]
+            for i, it in enumerate(pend, start=1):
+                linhas.append(f"{i}. *{it['nome']}*")
+                linhas.append(f"   CPF: {it['cpf']}")
+                linhas.append(f"   Motivo: {it['motivo']}")
+                linhas.append(f"   Ticket: `{it['id']}`")
+                linhas.append("")
+            msg = "\n".join(linhas)
+            msg += "\n💡 Use `/aceitar <TICKET>` para atender"
+        send(chat_id, msg)
+        return _send_admin_menu(send, chat_id)
+
+    if t == "5":
+        # Menu de configuração de agenda
+        return _send_agenda_menu(send, chat_id)
+
+    if t == "6":
+        # Logins ativos
+        try:
+            if excel and hasattr(excel, '_read_rows_clientes'):
+                clientes = excel._read_rows_clientes()
+                ativos = [c for c in clientes if c.get('UltimoLogin')]
+                
+                if not ativos:
+                    msg = "👥 *Logins Ativos*\n\n(Nenhum login registrado)"
+                else:
+                    linhas = ["👥 *Logins Ativos*\n"]
+                    for c in ativos[:10]:  # Limitar a 10
+                        nome = c.get('Nome', 'Sem nome')
+                        ultimo = c.get('UltimoLogin', '')
+                        linhas.append(f"• {nome}")
+                        if ultimo:
+                            linhas.append(f"  Último: {ultimo}")
+                        linhas.append("")
+                    msg = "\n".join(linhas)
+            else:
+                msg = "👥 *Logins Ativos*\n\n(Funcionalidade não disponível)"
+        except Exception:
+            msg = "👥 *Logins Ativos*\n\n(Erro ao buscar dados)"
+        
+        send(chat_id, msg)
         return _send_admin_menu(send, chat_id)
 
     if t == "9":
@@ -320,7 +414,7 @@ def _handle_admin_option(send, chat_id: str, t: str):
         _start_proxy_with_item(send, chat_id, item)
         return
 
-    send(chat_id, "Opção inválida. Use 1, 2, 3, 4 ou 9, ou comandos *aceitar <n>* / */aceitar <ticket>*.")
+    send(chat_id, "❌ Opção inválida. Use 1-6 ou 9, ou `/aceitar <ticket>`")
     _send_admin_menu(send, chat_id)
 
 def _start_proxy_with_item(send, admin_id: str, item: dict):
@@ -413,11 +507,28 @@ def route_admin_message(send, chat_id: str, text: str):
 
     # estados
     st = state_manager.get_state(chat_id)
-    if st not in (S_ADM_MENU, S_ADM_WAIT_DATE):
+    if st not in (S_ADM_MENU, S_ADM_WAIT_DATE, S_ADM_AGENDA_MENU, 
+                  S_ADM_AGENDA_BLOQUEAR, S_ADM_AGENDA_DESBLOQUEAR,
+                  S_ADM_AGENDA_AJUSTAR_DIA, S_ADM_AGENDA_AJUSTAR_HORARIOS):
         return _send_admin_menu(send, chat_id)
 
     if st == S_ADM_MENU:
         return _handle_admin_option(send, chat_id, t)
+    
+    if st == S_ADM_AGENDA_MENU:
+        return _handle_agenda_option(send, chat_id, t)
+    
+    if st == S_ADM_AGENDA_BLOQUEAR:
+        return _handle_agenda_bloquear(send, chat_id, t)
+    
+    if st == S_ADM_AGENDA_DESBLOQUEAR:
+        return _handle_agenda_desbloquear(send, chat_id, t)
+    
+    if st == S_ADM_AGENDA_AJUSTAR_DIA:
+        return _handle_agenda_ajustar_dia(send, chat_id, t)
+    
+    if st == S_ADM_AGENDA_AJUSTAR_HORARIOS:
+        return _handle_agenda_ajustar_horarios(send, chat_id, t)
 
     if st == S_ADM_WAIT_DATE:
         # parse DD/MM/AAAA
@@ -433,3 +544,302 @@ def route_admin_message(send, chat_id: str, text: str):
         data_str = f"{dd:02d}/{mm:02d}/{yyyy}"
         send(chat_id, _format_agenda_do_dia(data_str))
         return _send_admin_menu(send, chat_id)
+
+
+# =========================
+# Menu de Configuração de Agenda
+# =========================
+
+def _send_agenda_menu(send, chat_id: str):
+    """Menu de configuração de agenda com visual melhorado."""
+    if not ag:
+        send(chat_id, "❌ Módulo de agenda dinâmica não disponível.")
+        return _send_admin_menu(send, chat_id)
+    
+    top = "╔═══════════════════════════════╗"
+    titulo = "║  ⚙️  *CONFIGURAR AGENDA*  ⚙️    ║"
+    sep = "╠═══════════════════════════════╣"
+    bot = "╚═══════════════════════════════╝"
+    
+    opcoes = [
+        "║                               ║",
+        "║  1️⃣  🚫 Bloquear dia          ║",
+        "║  2️⃣  ✅ Desbloquear dia       ║",
+        "║  3️⃣  📅 Ver próximos 7 dias   ║",
+        "║  4️⃣  🕐 Ajustar horário       ║",
+        "║  5️⃣  📋 Ver bloqueios         ║",
+        "║                               ║",
+        "║  9️⃣  ↩️  Voltar ao admin      ║",
+        "║                               ║"
+    ]
+    
+    menu = "\n".join([top, titulo, sep] + opcoes + [bot])
+    
+    send(chat_id, menu)
+    state_manager.set_state(chat_id, S_ADM_AGENDA_MENU)
+
+
+def _handle_agenda_option(send, chat_id: str, t: str):
+    """Handler para opções do menu de agenda."""
+    if t == "1":
+        send(chat_id, "📅 Informe a *data* que deseja bloquear (DD/MM/AAAA):")
+        return state_manager.set_state(chat_id, S_ADM_AGENDA_BLOQUEAR)
+    
+    if t == "2":
+        send(chat_id, "📅 Informe a *data* que deseja desbloquear (DD/MM/AAAA):")
+        return state_manager.set_state(chat_id, S_ADM_AGENDA_DESBLOQUEAR)
+    
+    if t == "3":
+        # Mostrar próximos 7 dias
+        try:
+            hoje = datetime.now()
+            
+            # Carregar config da agenda
+            config_agenda = ag.carregar_config()
+            horario_funcionamento = config_agenda.get("horario_funcionamento", {})
+            
+            # Mapeamento de weekday() para chaves do JSON
+            dias_semana_map = {
+                0: "segunda",
+                1: "terca", 
+                2: "quarta",
+                3: "quinta",
+                4: "sexta",
+                5: "sabado",
+                6: "domingo"
+            }
+            
+            top = "╔═══════════════════════════════╗"
+            titulo = "║  📅  PRÓXIMOS 7 DIAS  📅      ║"
+            sep = "╠═══════════════════════════════╣"
+            bot = "╚═══════════════════════════════╝"
+            
+            linhas = ["║                               ║"]
+            tem_personalizado = False
+            
+            for i in range(7):
+                data_obj = hoje + timedelta(days=i)
+                data_str = data_obj.strftime("%d/%m/%Y")
+                dia_semana = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][data_obj.weekday()]
+                
+                config = ag.obter_configuracao_dia(data_str)
+                
+                if config.get("bloqueado"):
+                    status = "🚫  N/D*"
+                    tem_personalizado = True
+                elif not config.get("ativo"):
+                    status = "❌"
+                else:
+                    # Pegar horário do horario_funcionamento usando nome do dia
+                    dia_nome = dias_semana_map[data_obj.weekday()]
+                    config_padrao = horario_funcionamento.get(dia_nome, {})
+                    
+                    inicio = config_padrao.get("inicio", "00:00")
+                    fim = config_padrao.get("fim", "00:00")
+                    
+                    # Verifica se é personalizado (tem slots customizados)
+                    eh_personalizado = config.get("tipo_fonte") == "personalizado"
+                    
+                    if eh_personalizado:
+                        status = f"✅ {inicio} às {fim}*"
+                        tem_personalizado = True
+                    else:
+                        status = f"✅ {inicio} às {fim}"
+                
+                # Formatar linha
+                linha = f"║  {dia_semana} {data_str} — {status}"
+                linhas.append(linha)
+            
+            linhas.append("║                               ║")
+            
+            mensagem = "\n".join([top, titulo, sep] + linhas + [bot])
+            
+            if tem_personalizado:
+                mensagem += "\n\n* Horário personalizado/bloqueio"
+            
+            send(chat_id, mensagem)
+            
+        except Exception as e:
+            logger.error(f"Erro ao mostrar próximos 7 dias: {e}")
+            send(chat_id, f"❌ Erro ao buscar próximos dias: {str(e)}")
+        
+        return _send_agenda_menu(send, chat_id)
+    
+    if t == "4":
+        send(chat_id, 
+            "🕐 *Ajustar horário de um dia específico*\n\n"
+            "Escolha o dia da semana:\n"
+            "1) Segunda\n"
+            "2) Terça\n"
+            "3) Quarta\n"
+            "4) Quinta\n"
+            "5) Sexta\n"
+            "6) Sábado\n"
+            "7) Domingo")
+        return state_manager.set_state(chat_id, S_ADM_AGENDA_AJUSTAR_DIA)
+    
+    if t == "5":
+        # Listar bloqueios
+        bloqueios = ag.listar_bloqueios()
+        
+        if not bloqueios:
+            send(chat_id, "📋 *Bloqueios ativos:*\n\n(Nenhum bloqueio ativo)")
+        else:
+            linhas = ["📋 *Bloqueios ativos:*\n"]
+            for b in bloqueios:
+                data = b.get("data", "")
+                motivo = b.get("motivo", "")
+                if motivo:
+                    linhas.append(f"• {data} — {motivo}")
+                else:
+                    linhas.append(f"• {data}")
+            send(chat_id, "\n".join(linhas))
+        
+        return _send_agenda_menu(send, chat_id)
+    
+    if t == "9":
+        return _send_admin_menu(send, chat_id)
+    
+    send(chat_id, "Opção inválida. Use 1, 2, 3, 4, 5 ou 9.")
+    return _send_agenda_menu(send, chat_id)
+
+
+def _handle_agenda_bloquear(send, chat_id: str, t: str):
+    """Handler para bloquear um dia."""
+    # Parse DD/MM/AAAA
+    m = re.fullmatch(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})\s*", t)
+    if not m:
+        send(chat_id, "Data inválida. Use DD/MM/AAAA.")
+        return
+    
+    dd, mm, yyyy = map(int, m.groups())
+    try:
+        _ = date(yyyy, mm, dd)
+    except ValueError:
+        return send(chat_id, "Data inválida. Use DD/MM/AAAA.")
+    
+    data_str = f"{dd:02d}/{mm:02d}/{yyyy}"
+    
+    # Bloquear
+    sucesso = ag.adicionar_bloqueio_pontual(data_str, motivo="Bloqueado pelo admin")
+    
+    if sucesso:
+        send(chat_id, f"✅ Dia *{data_str}* bloqueado com sucesso!")
+    else:
+        send(chat_id, f"❌ Erro ao bloquear {data_str}. Pode já estar bloqueado.")
+    
+    return _send_agenda_menu(send, chat_id)
+
+
+def _handle_agenda_desbloquear(send, chat_id: str, t: str):
+    """Handler para desbloquear um dia."""
+    # Parse DD/MM/AAAA
+    m = re.fullmatch(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})\s*", t)
+    if not m:
+        send(chat_id, "Data inválida. Use DD/MM/AAAA.")
+        return
+    
+    dd, mm, yyyy = map(int, m.groups())
+    try:
+        _ = date(yyyy, mm, dd)
+    except ValueError:
+        return send(chat_id, "Data inválida. Use DD/MM/AAAA.")
+    
+    data_str = f"{dd:02d}/{mm:02d}/{yyyy}"
+    
+    # Desbloquear
+    sucesso = ag.remover_bloqueio_pontual(data_str)
+    
+    if sucesso:
+        send(chat_id, f"✅ Bloqueio removido para *{data_str}*!")
+    else:
+        send(chat_id, f"❌ Nenhum bloqueio encontrado para {data_str}.")
+    
+    return _send_agenda_menu(send, chat_id)
+
+
+def _handle_agenda_ajustar_dia(send, chat_id: str, t: str):
+    """Handler para escolher dia da semana para ajustar."""
+    dias_map = {
+        "1": "segunda",
+        "2": "terca",
+        "3": "quarta",
+        "4": "quinta",
+        "5": "sexta",
+        "6": "sabado",
+        "7": "domingo"
+    }
+    
+    dia_nome = dias_map.get(t)
+    if not dia_nome:
+        send(chat_id, "Opção inválida. Escolha de 1 a 7.")
+        return
+    
+    # Salvar dia escolhido
+    state_manager.update_data(chat_id, dia_semana_ajuste=dia_nome)
+    
+    # Pegar configuração atual
+    config = ag.carregar_config()
+    horario_dia = config.get("horario_funcionamento", {}).get(dia_nome, {})
+    
+    ativo = horario_dia.get("ativo", False)
+    inicio = horario_dia.get("inicio", "08:00")
+    fim = horario_dia.get("fim", "18:00")
+    
+    send(chat_id,
+        f"⚙️ *Configuração atual de {dia_nome.capitalize()}:*\n\n"
+        f"Status: {'✅ Ativo' if ativo else '❌ Inativo'}\n"
+        f"Início: {inicio}\n"
+        f"Fim: {fim}\n\n"
+        "Digite a nova configuração no formato:\n"
+        "`ativo inicio fim`\n\n"
+        "Exemplos:\n"
+        "• `sim 08:00 18:00` (ativar, 8h às 18h)\n"
+        "• `não 08:00 18:00` (desativar)\n"
+        "• `sim 09:00 17:00` (9h às 17h)")
+    
+    return state_manager.set_state(chat_id, S_ADM_AGENDA_AJUSTAR_HORARIOS)
+
+
+def _handle_agenda_ajustar_horarios(send, chat_id: str, t: str):
+    """Handler para ajustar horários de um dia da semana."""
+    # Parse: sim/não HH:MM HH:MM
+    m = re.fullmatch(r"\s*(sim|não|nao|s|n)\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})\s*", t, flags=re.IGNORECASE)
+    if not m:
+        send(chat_id, 
+            "Formato inválido. Use:\n"
+            "`ativo inicio fim`\n\n"
+            "Exemplo: `sim 08:00 18:00`")
+        return
+    
+    ativo_str = m.group(1).lower()
+    inicio = m.group(2)
+    fim = m.group(3)
+    
+    ativo = ativo_str in ("sim", "s")
+    
+    # Pegar dia da semana
+    dt = state_manager.get_data(chat_id)
+    dia_nome = dt.get("dia_semana_ajuste")
+    
+    if not dia_nome:
+        send(chat_id, "Erro: dia da semana não encontrado. Tente novamente.")
+        return _send_agenda_menu(send, chat_id)
+    
+    # Atualizar configuração
+    sucesso = ag.atualizar_horario_dia_semana(
+        dia=dia_nome,
+        ativo=ativo,
+        inicio=inicio,
+        fim=fim
+    )
+    
+    if sucesso:
+        send(chat_id,
+            f"✅ *{dia_nome.capitalize()}* atualizado com sucesso!\n\n"
+            f"Status: {'✅ Ativo' if ativo else '❌ Inativo'}\n"
+            f"Horário: {inicio} às {fim}")
+    else:
+        send(chat_id, "❌ Erro ao atualizar configuração.")
+    
+    return _send_agenda_menu(send, chat_id)

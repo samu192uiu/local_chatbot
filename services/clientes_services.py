@@ -14,7 +14,8 @@ SALT = os.getenv("PIN_SALT", "barbearia_salt")
 # Cabeçalhos canonizados (ordem importa no XLSX)
 HEADERS = [
     "ID", "CPF", "Nome", "Nascimento", "Telefone", "Email",
-    "ChatId", "PinHash", "UltimoLogin", "CriadoEm", "AtualizadoEm"
+    "ChatId", "PinHash", "UltimoLogin", "CriadoEm", "AtualizadoEm",
+    "TentativasPin", "BloqueadoAte"  # controle de tentativas de login
 ]
 
 # =========================
@@ -220,6 +221,72 @@ def verify_pin(cpf: str, pin: str) -> bool:
     saved = ws.cell(row=r, column=_col_index("PinHash")).value or ""
     return saved == _hash_pin(pin)
 
+def incrementar_tentativa_pin(cpf: str) -> int:
+    """
+    Incrementa contador de tentativas de PIN e retorna o total.
+    Se atingir 3 tentativas, bloqueia por 15 minutos.
+    
+    Returns:
+        Número atual de tentativas
+    """
+    cpf = _cpf_puro(cpf)
+    wb, ws = _open_ws()
+    r = _find_row_by(ws, "CPF", cpf)
+    if not r:
+        return 0
+    
+    tentativas = int(ws.cell(row=r, column=_col_index("TentativasPin")).value or 0)
+    tentativas += 1
+    
+    ws.cell(row=r, column=_col_index("TentativasPin"), value=tentativas)
+    
+    # Se atingiu 3 tentativas, bloqueia por 15 minutos
+    if tentativas >= 3:
+        from datetime import datetime, timedelta
+        bloqueado_ate = (datetime.now() + timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
+        ws.cell(row=r, column=_col_index("BloqueadoAte"), value=bloqueado_ate)
+    
+    wb.save(FILE_PATH)
+    return tentativas
+
+def esta_bloqueado(cpf: str) -> bool:
+    """
+    Verifica se o CPF está temporariamente bloqueado por tentativas de PIN.
+    
+    Returns:
+        True se bloqueado, False caso contrário
+    """
+    cpf = _cpf_puro(cpf)
+    _, ws = _open_ws()
+    r = _find_row_by(ws, "CPF", cpf)
+    if not r:
+        return False
+    
+    bloqueado_ate_str = ws.cell(row=r, column=_col_index("BloqueadoAte")).value or ""
+    if not bloqueado_ate_str:
+        return False
+    
+    try:
+        from datetime import datetime
+        bloqueado_ate = datetime.strptime(str(bloqueado_ate_str), "%Y-%m-%d %H:%M:%S")
+        return datetime.now() < bloqueado_ate
+    except Exception:
+        return False
+
+def resetar_tentativas_pin(cpf: str) -> None:
+    """
+    Reseta contador de tentativas e remove bloqueio (chamado após login bem-sucedido).
+    """
+    cpf = _cpf_puro(cpf)
+    wb, ws = _open_ws()
+    r = _find_row_by(ws, "CPF", cpf)
+    if not r:
+        return
+    
+    ws.cell(row=r, column=_col_index("TentativasPin"), value=0)
+    ws.cell(row=r, column=_col_index("BloqueadoAte"), value="")
+    wb.save(FILE_PATH)
+
 def touch_login(cpf: str) -> None:
     cpf = _cpf_puro(cpf)
     wb, ws = _open_ws()
@@ -229,6 +296,9 @@ def touch_login(cpf: str) -> None:
     now = _now_str()
     ws.cell(row=r, column=_col_index("UltimoLogin"), value=now)
     ws.cell(row=r, column=_col_index("AtualizadoEm"), value=now)
+    # Resetar tentativas ao fazer login com sucesso
+    ws.cell(row=r, column=_col_index("TentativasPin"), value=0)
+    ws.cell(row=r, column=_col_index("BloqueadoAte"), value="")
     wb.save(FILE_PATH)
 
 # =========================

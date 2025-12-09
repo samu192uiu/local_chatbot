@@ -1,12 +1,57 @@
 {
 "moeda": "BRL",
 "servicos": [
-    { "id": "corte",        "nome": "Corte de Cabelo",     "preco": 50.0,  "unidade": "serviço", "agendavel": true },
-    { "id": "barba",        "nome": "Barba",               "preco": 40.0,  "unidade": "serviço", "agendavel": true },
-    { "id": "combo",        "nome": "Combo (Corte + Barba)", "preco": 80.0,  "unidade": "serviço", "agendavel": true },
-    { "id": "sobrancelha",  "nome": "Sobrancelha",         "preco": 20.0,  "unidade": "serviço", "agendavel": true },
-    { "id": "hidratacao",   "nome": "Hidratação Capilar",  "preco": 60.0,  "unidade": "serviço", "agendavel": true },
-    { "id": "luzes",        "nome": "Luzes/Coloração",     "preco": 120.0, "unidade": "serviço", "agendavel": true,
-    "observacao": "Preço pode variar conforme o tamanho do cabelo" }
+    { 
+        "id": "cabelo_sobrancelha",
+        "nome": "Cabelo + Sombrancelha",
+        "preco": 45.0,
+        "duracao_minutos": 40,
+        "unidade": "serviço",
+        "agendavel": true
+    },
+    { 
+        "id": "barba",
+        "nome": "Barba",
+        "preco": 15.0,
+        "duracao_minutos": 20,
+        "unidade": "serviço",
+        "agendavel": true
+    },
+    { 
+        "id": "sobrancelha",
+        "nome": "Sombrancelha",
+        "preco": 10.0,
+        "duracao_minutos": 10,
+        "unidade": "serviço",
+        "agendavel": true
+    },
+    { 
+        "id": "platinado",
+        "nome": "Platinado",
+        "preco": 170.0,
+        "duracao_minutos": 120,
+        "unidade": "serviço",
+        "agendavel": true,
+        "observacao": "20 min aplicação + 60 min espera + 40 min corte",
+        "fracionado": true,
+        "etapas": [
+            {
+                "nome": "Aplicação do produto",
+                "duracao_minutos": 20,
+                "ordem": 1
+            },
+            {
+                "nome": "Espera do produto",
+                "duracao_minutos": 60,
+                "ordem": 2,
+                "permite_outro_atendimento": true
+            },
+            {
+                "nome": "Corte final",
+                "duracao_minutos": 40,
+                "ordem": 3
+            }
+        ]
+    }
 ]
 }

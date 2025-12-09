@@ -1,0 +1,157 @@
+{
+  "servicos": [
+    {
+      "id": "corte_simples",
+      "nome": "Corte de Cabelo",
+      "descricao": "Corte de cabelo tradicional",
+      "valor": 35.00,
+      "duracao_minutos": 40,
+      "tipo": "simples",
+      "emoji": "✂️"
+    },
+    {
+      "id": "barba",
+      "nome": "Barba",
+      "descricao": "Aparar e modelar barba",
+      "valor": 25.00,
+      "duracao_minutos": 30,
+      "tipo": "simples",
+      "emoji": "🧔"
+    },
+    {
+      "id": "corte_barba",
+      "nome": "Corte + Barba",
+      "descricao": "Pacote completo",
+      "valor": 55.00,
+      "duracao_minutos": 60,
+      "tipo": "simples",
+      "emoji": "💈"
+    },
+    {
+      "id": "luzes",
+      "nome": "Luzes no Cabelo",
+      "descricao": "Aplicação de luzes - serviço fracionado",
+      "valor": 150.00,
+      "tipo": "fracionado",
+      "emoji": "✨",
+      "etapas": [
+        {
+          "ordem": 1,
+          "nome": "Aplicação do Produto",
+          "duracao_minutos": 30,
+          "barbeiro_ocupado": true,
+          "descricao": "Aplicação inicial do produto para luzes"
+        },
+        {
+          "ordem": 2,
+          "nome": "Ação do Produto",
+          "duracao_minutos": 45,
+          "barbeiro_ocupado": false,
+          "descricao": "Cliente aguarda produto fazer efeito (barbeiro livre)"
+        },
+        {
+          "ordem": 3,
+          "nome": "Verificação",
+          "duracao_minutos": 20,
+          "barbeiro_ocupado": true,
+          "descricao": "Verificar resultado e possível 2ª aplicação"
+        },
+        {
+          "ordem": 4,
+          "nome": "Finalização",
+          "duracao_minutos": 40,
+          "barbeiro_ocupado": true,
+          "descricao": "Lavar, secar e finalizar"
+        }
+      ],
+      "duracao_total_minutos": 135,
+      "duracao_barbeiro_ocupado": 90
+    },
+    {
+      "id": "platinado",
+      "nome": "Platinado Completo",
+      "descricao": "Descoloração completa - serviço fracionado",
+      "valor": 200.00,
+      "tipo": "fracionado",
+      "emoji": "⚡",
+      "etapas": [
+        {
+          "ordem": 1,
+          "nome": "Aplicação do Descolorante",
+          "duracao_minutos": 40,
+          "barbeiro_ocupado": true,
+          "descricao": "Aplicação do produto descolorante"
+        },
+        {
+          "ordem": 2,
+          "nome": "Ação do Produto (1ª etapa)",
+          "duracao_minutos": 50,
+          "barbeiro_ocupado": false,
+          "descricao": "Aguardar descoloração (barbeiro livre)"
+        },
+        {
+          "ordem": 3,
+          "nome": "Verificação e 2ª Aplicação",
+          "duracao_minutos": 30,
+          "barbeiro_ocupado": true,
+          "descricao": "Verificar e aplicar 2ª mão se necessário"
+        },
+        {
+          "ordem": 4,
+          "nome": "Ação do Produto (2ª etapa)",
+          "duracao_minutos": 40,
+          "barbeiro_ocupado": false,
+          "descricao": "Aguardar 2ª descoloração (barbeiro livre)"
+        },
+        {
+          "ordem": 5,
+          "nome": "Matização e Finalização",
+          "duracao_minutos": 50,
+          "barbeiro_ocupado": true,
+          "descricao": "Matizar, lavar, secar e finalizar"
+        }
+      ],
+      "duracao_total_minutos": 210,
+      "duracao_barbeiro_ocupado": 120
+    },
+    {
+      "id": "coloracao",
+      "nome": "Coloração",
+      "descricao": "Tintura completa - serviço fracionado",
+      "valor": 120.00,
+      "tipo": "fracionado",
+      "emoji": "🎨",
+      "etapas": [
+        {
+          "ordem": 1,
+          "nome": "Aplicação da Tinta",
+          "duracao_minutos": 25,
+          "barbeiro_ocupado": true,
+          "descricao": "Aplicação da coloração"
+        },
+        {
+          "ordem": 2,
+          "nome": "Pausa para Fixação",
+          "duracao_minutos": 40,
+          "barbeiro_ocupado": false,
+          "descricao": "Aguardar tinta fixar (barbeiro livre)"
+        },
+        {
+          "ordem": 3,
+          "nome": "Lavagem e Finalização",
+          "duracao_minutos": 35,
+          "barbeiro_ocupado": true,
+          "descricao": "Lavar, secar e finalizar"
+        }
+      ],
+      "duracao_total_minutos": 100,
+      "duracao_barbeiro_ocupado": 60
+    }
+  ],
+  "configuracoes": {
+    "slot_minimo_minutos": 20,
+    "intervalo_entre_etapas_minutos": 5,
+    "permitir_agendamento_em_pausas": true,
+    "descricao": "Configurações do sistema de agendamento fracionado"
+  }
+}

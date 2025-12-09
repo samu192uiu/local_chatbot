@@ -16,6 +16,15 @@ try:
 except Exception:
     Waha = None
 
+# Sistema de lembretes
+try:
+    from services import reminders
+    _REMINDERS_ENABLED = True
+except Exception as e:
+    reminders = None
+    _REMINDERS_ENABLED = False
+    logging.warning(f"Sistema de lembretes não disponível: {e}")
+
 # ====== Config (ENV) ======
 WAHA_API_URL = os.getenv("WAHA_API_URL", "http://waha:3000").rstrip("/")
 WAHA_SESSION = (os.getenv("WAHA_SESSION", "default") or "default").strip()
@@ -29,6 +38,9 @@ if not logger.handlers:
 
 # Deduplicação: agora guardamos **somente event_ids reais**
 _RECENT_EVENT_IDS: deque[str] = deque(maxlen=2000)
+
+# Flag para controlar inicialização única dos lembretes
+_LEMBRETES_INICIADOS = False
 
 # --------------------------------------------------------------------------------------
 # Utilitários
@@ -148,6 +160,29 @@ def _send(chat_id: str, message: str):
             logger.error(f"Falha ao enviar via WAHA (client): {e}")
 
     print(f"[SEND-FALLBACK to {chat_id}] {message}")
+
+
+# --------------------------------------------------------------------------------------
+# Inicialização do sistema de lembretes
+# --------------------------------------------------------------------------------------
+def _inicializar_lembretes_se_necessario():
+    """Inicializa o sistema de lembretes uma única vez."""
+    global _LEMBRETES_INICIADOS
+    
+    if _LEMBRETES_INICIADOS:
+        return
+    
+    if not _REMINDERS_ENABLED or not reminders:
+        return
+    
+    try:
+        # Inicializar com a função de envio
+        reminders.inicializar_lembretes(_send)
+        _LEMBRETES_INICIADOS = True
+        logger.info("✅ Sistema de lembretes automáticos iniciado")
+    except Exception as e:
+        logger.error(f"❌ Erro ao inicializar sistema de lembretes: {e}")
+
 
 # --------------------------------------------------------------------------------------
 # typing (best-effort)
@@ -336,6 +371,9 @@ def healthz():
 @web_bp.post("/chatbot/webhook/")
 def chatbot_webhook():
     try:
+        # Inicializar lembretes (só na primeira chamada)
+        _inicializar_lembretes_se_necessario()
+        
         payload = request.get_json(silent=True)
         if isinstance(payload, str):
             try:
